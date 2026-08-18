@@ -1,0 +1,30 @@
+Copyright (c) 2026 jfraygit
+
+All rights reserved.
+
+The source in this repository is published so that anyone running Lucent can read
+what they are running. It is not placed in the public domain and no open-source
+licence is granted.
+
+You may:
+
+  - download, install and use Lucent for personal, non-commercial purposes;
+  - read this source, and build it yourself for your own personal use;
+  - share the released archive unmodified.
+
+You may not, without prior written permission:
+
+  - redistribute modified versions, in source or binary form;
+  - publish this source or a derivative of it elsewhere;
+  - use it in a commercial product or service.
+
+Lucent is provided "as is", without warranty of any kind, express or implied,
+including but not limited to the warranties of merchantability, fitness for a
+particular purpose and noninfringement. In no event shall the authors be liable
+for any claim, damages or other liability arising from, out of or in connection
+with the software or its use.
+
+Lucent embeds no Microsoft, Google or Amazon code. It renders through the
+Microsoft Edge WebView2 Runtime, which is licensed separately by Microsoft and is
+not distributed here. "YouTube" and "Twitch" are trademarks of their respective
+owners; this project is not affiliated with, endorsed by, or connected to either.

@@ -1,0 +1,166 @@
+<Window x:Class="Lucent.MainWindow"
+        xmlns="http://schemas.microsoft.com/winfx/2006/xaml/presentation"
+        xmlns:x="http://schemas.microsoft.com/winfx/2006/xaml"
+        xmlns:shell="clr-namespace:System.Windows.Shell;assembly=PresentationFramework"
+        Title="Lucent" Height="900" Width="1500"
+        Icon="Assets/logo.ico"
+        WindowStyle="None"
+        WindowStartupLocation="CenterScreen"
+        Background="{StaticResource ChromeBg}">
+
+  <shell:WindowChrome.WindowChrome>
+    <shell:WindowChrome CaptionHeight="40"
+                        ResizeBorderThickness="6"
+                        CornerRadius="0"
+                        GlassFrameThickness="0,0,0,1"
+                        UseAeroCaptionButtons="False"/>
+  </shell:WindowChrome.WindowChrome>
+
+  <Window.InputBindings>
+    <KeyBinding Key="T" Modifiers="Ctrl" Command="{Binding NewTabCommand, RelativeSource={RelativeSource AncestorType=Window}}"/>
+    <KeyBinding Key="W" Modifiers="Ctrl" Command="{Binding CloseTabCommand, RelativeSource={RelativeSource AncestorType=Window}}"/>
+    <KeyBinding Key="L" Modifiers="Ctrl" Command="{Binding FocusAddressCommand, RelativeSource={RelativeSource AncestorType=Window}}"/>
+    <KeyBinding Key="F5" Command="{Binding ReloadCommand, RelativeSource={RelativeSource AncestorType=Window}}"/>
+  </Window.InputBindings>
+
+  <Grid>
+    <Grid.RowDefinitions>
+      <RowDefinition Height="Auto"/>
+      <RowDefinition Height="Auto"/>
+      <RowDefinition Height="Auto"/>
+      <RowDefinition Height="*"/>
+    </Grid.RowDefinitions>
+
+    <Grid x:Name="TabStripRow" Grid.Row="0" Height="40">
+      <Grid.ColumnDefinitions>
+        <ColumnDefinition Width="*"/>
+        <ColumnDefinition Width="Auto"/>
+      </Grid.ColumnDefinitions>
+
+      <ScrollViewer Grid.Column="0" Margin="8,7,0,0"
+                    HorizontalScrollBarVisibility="Hidden"
+                    VerticalScrollBarVisibility="Disabled">
+        <StackPanel Orientation="Horizontal">
+          <ItemsControl x:Name="TabStrip" shell:WindowChrome.IsHitTestVisibleInChrome="True">
+            <ItemsControl.ItemsPanel>
+              <ItemsPanelTemplate>
+                <StackPanel Orientation="Horizontal"/>
+              </ItemsPanelTemplate>
+            </ItemsControl.ItemsPanel>
+            <ItemsControl.ItemTemplate>
+              <DataTemplate>
+                <Border x:Name="TabRoot" Background="{StaticResource TabBg}"
+                        CornerRadius="7,7,0,0" Margin="0,0,3,0" Padding="11,0,5,0"
+                        Height="33" MinWidth="130" MaxWidth="220" Cursor="Hand"
+                        MouseLeftButtonDown="Tab_MouseDown">
+                  <Grid>
+                    <Grid.ColumnDefinitions>
+                      <ColumnDefinition Width="Auto"/>
+                      <ColumnDefinition Width="*"/>
+                      <ColumnDefinition Width="Auto"/>
+                    </Grid.ColumnDefinitions>
+                    <Image Source="{Binding Favicon}" Width="16" Height="16"
+                           Margin="0,0,8,0" VerticalAlignment="Center"
+                           RenderOptions.BitmapScalingMode="HighQuality"/>
+                    <TextBlock Grid.Column="1" Text="{Binding Title}" Foreground="{StaticResource FgDim}"
+                               FontSize="12" VerticalAlignment="Center"
+                               TextTrimming="CharacterEllipsis" Margin="0,0,6,0"/>
+                    <Button Grid.Column="2" Content="&#xE711;" FontSize="9"
+                            Width="21" Height="21" Style="{StaticResource IconButton}"
+                            Click="TabClose_Click" ToolTip="Close Tab"/>
+                  </Grid>
+                </Border>
+                <DataTemplate.Triggers>
+                  <DataTrigger Binding="{Binding IsActive}" Value="True">
+                    <Setter TargetName="TabRoot" Property="Background" Value="{StaticResource TabActiveBg}"/>
+                    <Setter TargetName="TabRoot" Property="Height" Value="34"/>
+                  </DataTrigger>
+                </DataTemplate.Triggers>
+              </DataTemplate>
+            </ItemsControl.ItemTemplate>
+          </ItemsControl>
+
+          <Button Content="&#xE710;" Style="{StaticResource IconButton}"
+                  VerticalAlignment="Top" Margin="2,2,0,0"
+                  Click="NewTab_Click" ToolTip="New Tab (Ctrl+T)"
+                  shell:WindowChrome.IsHitTestVisibleInChrome="True"/>
+        </StackPanel>
+      </ScrollViewer>
+
+      <StackPanel Grid.Column="1" Orientation="Horizontal" VerticalAlignment="Top"
+                  shell:WindowChrome.IsHitTestVisibleInChrome="True">
+        <Button Content="&#xE921;" Style="{StaticResource WindowButton}"
+                Click="Minimize_Click" ToolTip="Minimize"/>
+        <Button x:Name="MaximizeButton" Click="Maximize_Click">
+          <Button.Style>
+            <Style TargetType="Button" BasedOn="{StaticResource WindowButton}">
+              <Setter Property="Content" Value="&#xE922;"/>
+              <Setter Property="ToolTip" Value="Maximize"/>
+              <Style.Triggers>
+                <DataTrigger Value="Maximized"
+                             Binding="{Binding WindowState, RelativeSource={RelativeSource AncestorType=Window}}">
+                  <Setter Property="Content" Value="&#xE923;"/>
+                  <Setter Property="ToolTip" Value="Restore"/>
+                </DataTrigger>
+              </Style.Triggers>
+            </Style>
+          </Button.Style>
+        </Button>
+        <Button Content="&#xE8BB;" Style="{StaticResource WindowCloseButton}"
+                Click="CloseWindow_Click" ToolTip="Close"/>
+      </StackPanel>
+    </Grid>
+
+    <Grid x:Name="NavRow" Grid.Row="1" Margin="8,5,8,7">
+      <Grid.ColumnDefinitions>
+        <ColumnDefinition Width="Auto"/>
+        <ColumnDefinition Width="Auto"/>
+        <ColumnDefinition Width="Auto"/>
+        <ColumnDefinition Width="*"/>
+        <ColumnDefinition Width="Auto"/>
+        <ColumnDefinition Width="Auto"/>
+      </Grid.ColumnDefinitions>
+
+      <Button x:Name="BackButton" Grid.Column="0" Content="&#xE72B;"
+              Style="{StaticResource IconButton}" Click="Back_Click" ToolTip="Back"/>
+      <Button x:Name="ForwardButton" Grid.Column="1" Content="&#xE72A;"
+              Style="{StaticResource IconButton}" Click="Forward_Click" ToolTip="Forward"/>
+      <Button x:Name="ReloadButton" Grid.Column="2" Content="&#xE72C;"
+              Style="{StaticResource IconButton}" Click="Reload_Click" ToolTip="Reload (F5)"/>
+
+      <TextBox x:Name="AddressBar" Grid.Column="3" Style="{StaticResource AddressBox}"
+               Margin="6,0,6,0" KeyDown="AddressBar_KeyDown" GotKeyboardFocus="AddressBar_GotFocus"/>
+
+      <Border Grid.Column="4" Background="{StaticResource FieldBg}" CornerRadius="7"
+              Padding="10,0,10,0" Height="30" ToolTip="Requests blocked on this tab">
+        <TextBlock x:Name="BlockCount" Text="0 blocked" Foreground="{StaticResource FgDim}"
+                   FontSize="12" VerticalAlignment="Center"/>
+      </Border>
+
+      <TextBlock x:Name="VersionLabel" Grid.Column="5" Foreground="#5C5C66" FontSize="11"
+                 VerticalAlignment="Center" Margin="9,0,3,0"/>
+    </Grid>
+
+    <Border x:Name="UpdateBar" Grid.Row="2" Visibility="Collapsed"
+            Background="{StaticResource FieldBg}" CornerRadius="7"
+            Margin="8,0,8,7" Padding="12,0,4,0" Height="34">
+      <Grid>
+        <Grid.ColumnDefinitions>
+          <ColumnDefinition Width="*"/>
+          <ColumnDefinition Width="Auto"/>
+          <ColumnDefinition Width="Auto"/>
+        </Grid.ColumnDefinitions>
+
+        <TextBlock x:Name="UpdateText" Foreground="{StaticResource Fg}" FontSize="12"
+                   VerticalAlignment="Center" TextTrimming="CharacterEllipsis"/>
+
+        <Button x:Name="UpdateAction" Grid.Column="1" Content="Install"
+                Style="{StaticResource AccentTextButton}" Click="UpdateInstall_Click"/>
+        <Button x:Name="UpdateDismiss" Grid.Column="2" Content="Later"
+                Style="{StaticResource TextButton}" Click="UpdateLater_Click"/>
+      </Grid>
+    </Border>
+
+    <Grid x:Name="ContentHost" Grid.Row="3" Margin="4,0,4,4"/>
+  </Grid>
+</Window>
