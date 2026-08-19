@@ -2,6 +2,7 @@
         xmlns="http://schemas.microsoft.com/winfx/2006/xaml/presentation"
         xmlns:x="http://schemas.microsoft.com/winfx/2006/xaml"
         xmlns:shell="clr-namespace:System.Windows.Shell;assembly=PresentationFramework"
+        xmlns:ui="clr-namespace:Lucent.Ui"
         Title="Lucent" Height="900" Width="1500"
         Icon="Assets/logo.ico"
         WindowStyle="None"
@@ -21,10 +22,13 @@
     <KeyBinding Key="W" Modifiers="Ctrl" Command="{Binding CloseTabCommand, RelativeSource={RelativeSource AncestorType=Window}}"/>
     <KeyBinding Key="L" Modifiers="Ctrl" Command="{Binding FocusAddressCommand, RelativeSource={RelativeSource AncestorType=Window}}"/>
     <KeyBinding Key="F5" Command="{Binding ReloadCommand, RelativeSource={RelativeSource AncestorType=Window}}"/>
+    <KeyBinding Key="D" Modifiers="Ctrl" Command="{Binding BookmarkCommand, RelativeSource={RelativeSource AncestorType=Window}}"/>
+    <KeyBinding Key="B" Modifiers="Ctrl+Shift" Command="{Binding ToggleBookmarkBarCommand, RelativeSource={RelativeSource AncestorType=Window}}"/>
   </Window.InputBindings>
 
   <Grid>
     <Grid.RowDefinitions>
+      <RowDefinition Height="Auto"/>
       <RowDefinition Height="Auto"/>
       <RowDefinition Height="Auto"/>
       <RowDefinition Height="Auto"/>
@@ -128,8 +132,21 @@
       <Button x:Name="ReloadButton" Grid.Column="2" Content="&#xE72C;"
               Style="{StaticResource IconButton}" Click="Reload_Click" ToolTip="Reload (F5)"/>
 
-      <TextBox x:Name="AddressBar" Grid.Column="3" Style="{StaticResource AddressBox}"
-               Margin="6,0,6,0" KeyDown="AddressBar_KeyDown" GotKeyboardFocus="AddressBar_GotFocus"/>
+      <Border Grid.Column="3" Background="{StaticResource FieldBg}" CornerRadius="7"
+              Height="30" Margin="6,0,6,0">
+        <Grid>
+          <Grid.ColumnDefinitions>
+            <ColumnDefinition Width="*"/>
+            <ColumnDefinition Width="Auto"/>
+          </Grid.ColumnDefinitions>
+
+          <TextBox x:Name="AddressBar" Style="{StaticResource AddressBox}"
+                   KeyDown="AddressBar_KeyDown" GotKeyboardFocus="AddressBar_GotFocus"/>
+
+          <Button x:Name="StarButton" Grid.Column="1" Style="{StaticResource StarButton}"
+                  Margin="0,0,3,0" Click="Star_Click"/>
+        </Grid>
+      </Border>
 
       <Border Grid.Column="4" Background="{StaticResource FieldBg}" CornerRadius="7"
               Padding="10,0,10,0" Height="30" ToolTip="Requests blocked on this tab">
@@ -141,7 +158,43 @@
                  VerticalAlignment="Center" Margin="9,0,3,0"/>
     </Grid>
 
-    <Border x:Name="UpdateBar" Grid.Row="2" Visibility="Collapsed"
+    <ScrollViewer x:Name="BookmarkBarRoot" Grid.Row="2" Visibility="Collapsed"
+                  Margin="9,0,8,6" HorizontalScrollBarVisibility="Hidden"
+                  VerticalScrollBarVisibility="Disabled">
+      <ItemsControl x:Name="BookmarkBar">
+        <ItemsControl.ItemsPanel>
+          <ItemsPanelTemplate>
+            <StackPanel Orientation="Horizontal"/>
+          </ItemsPanelTemplate>
+        </ItemsControl.ItemsPanel>
+        <ItemsControl.ItemTemplate>
+          <DataTemplate>
+            <Button Style="{StaticResource BookmarkChip}" Click="Bookmark_Click"
+                    ToolTip="{Binding Url}">
+              <StackPanel Orientation="Horizontal">
+                <Image Source="{Binding Image}" Width="16" Height="16" Margin="0,0,7,0"
+                       VerticalAlignment="Center" RenderOptions.BitmapScalingMode="HighQuality"/>
+                <TextBlock Text="{Binding Title}" VerticalAlignment="Center"
+                           MaxWidth="150" TextTrimming="CharacterEllipsis"/>
+              </StackPanel>
+              <Button.ContextMenu>
+                <ContextMenu Style="{StaticResource ChromeContextMenu}"
+                             ui:MenuChrome.Animated="True">
+                  <MenuItem Header="Remove Bookmark" Click="BookmarkRemove_Click">
+                    <MenuItem.Icon>
+                      <TextBlock Text="&#xE74D;" FontSize="13" Foreground="{StaticResource FgDim}"
+                                 FontFamily="Segoe Fluent Icons, Segoe MDL2 Assets"/>
+                    </MenuItem.Icon>
+                  </MenuItem>
+                </ContextMenu>
+              </Button.ContextMenu>
+            </Button>
+          </DataTemplate>
+        </ItemsControl.ItemTemplate>
+      </ItemsControl>
+    </ScrollViewer>
+
+    <Border x:Name="UpdateBar" Grid.Row="3" Visibility="Collapsed"
             Background="{StaticResource FieldBg}" CornerRadius="7"
             Margin="8,0,8,7" Padding="12,0,4,0" Height="34">
       <Grid>
@@ -161,6 +214,6 @@
       </Grid>
     </Border>
 
-    <Grid x:Name="ContentHost" Grid.Row="3" Margin="4,0,4,4"/>
+    <Grid x:Name="ContentHost" Grid.Row="4" Margin="4,0,4,4"/>
   </Grid>
 </Window>

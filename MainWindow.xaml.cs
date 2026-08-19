@@ -4,6 +4,8 @@ using System.Runtime.InteropServices;
 using System.Windows;
 using System.Windows.Input;
 using System.Windows.Interop;
+using System.Windows.Media;
+using Lucent.Bookmarks;
 using Lucent.Updates;
 using Microsoft.Web.WebView2.Core;
 
@@ -12,6 +14,7 @@ namespace Lucent;
 public partial class MainWindow : Window
 {
     private readonly ObservableCollection<BrowserTab> _tabs = new();
+    private readonly BookmarkStore _bookmarks = new();
 
     private CoreWebView2Environment? _environment;
     private BrowserTab? _active;
@@ -24,6 +27,8 @@ public partial class MainWindow : Window
     public ICommand CloseTabCommand { get; }
     public ICommand FocusAddressCommand { get; }
     public ICommand ReloadCommand { get; }
+    public ICommand BookmarkCommand { get; }
+    public ICommand ToggleBookmarkBarCommand { get; }
 
     public MainWindow()
     {
@@ -33,6 +38,17 @@ public partial class MainWindow : Window
         CloseTabCommand = new RelayCommand(() => { if (_active is not null) CloseTab(_active); });
         FocusAddressCommand = new RelayCommand(() => { AddressBar.Focus(); AddressBar.SelectAll(); });
         ReloadCommand = new RelayCommand(() => _active?.View.CoreWebView2?.Reload());
+        BookmarkCommand = new RelayCommand(ToggleBookmark);
+        ToggleBookmarkBarCommand = new RelayCommand(() =>
+        {
+            _bookmarks.BarVisible = !_bookmarks.BarVisible;
+            _bookmarks.Save();
+            ShowBookmarkBar();
+        });
+
+        _bookmarks.Load();
+        BookmarkBar.ItemsSource = _bookmarks.Items;
+        ShowBookmarkBar();
 
         TabStrip.ItemsSource = _tabs;
         Loaded += OnLoaded;
@@ -210,6 +226,70 @@ public partial class MainWindow : Window
 
         BlockCount.Text = $"{_active.Blocker.BlockedCount} blocked";
         Title = string.IsNullOrWhiteSpace(_active.Title) ? "Lucent" : $"{_active.Title} - Lucent";
+
+        UpdateStar();
+    }
+
+
+    private const string StarOutline = "";
+    private const string StarFilled = "";
+
+    private void UpdateStar()
+    {
+        bool saved = _bookmarks.Contains(_active?.Source);
+
+        StarButton.Content = saved ? StarFilled : StarOutline;
+        StarButton.Foreground = saved
+            ? (Brush)FindResource("Accent")
+            : (Brush)FindResource("FgDim");
+        StarButton.ToolTip = saved ? "Remove Bookmark (Ctrl+D)" : "Bookmark This Page (Ctrl+D)";
+    }
+
+    private void ToggleBookmark()
+    {
+        if (_active is null) return;
+
+        string url = _active.Source;
+        if (string.IsNullOrWhiteSpace(url)) return;
+
+        if (_bookmarks.Contains(url))
+        {
+            _bookmarks.Remove(url);
+        }
+        else
+        {
+            _bookmarks.Add(url, _active.Title, _active.Favicon);
+
+            _bookmarks.BarVisible = true;
+            _bookmarks.Save();
+        }
+
+        ShowBookmarkBar();
+        UpdateStar();
+    }
+
+    private void ShowBookmarkBar() =>
+        BookmarkBarRoot.Visibility = _bookmarks.BarVisible && !_isFullScreen && _bookmarks.Items.Count > 0
+            ? Visibility.Visible
+            : Visibility.Collapsed;
+
+    private void Star_Click(object sender, RoutedEventArgs e) => ToggleBookmark();
+
+    private void Bookmark_Click(object sender, RoutedEventArgs e)
+    {
+        if (((FrameworkElement)sender).DataContext is not Bookmark bookmark) return;
+
+        if (_active is null) _ = OpenTabAsync(bookmark.Url, activate: true);
+        else _active.Navigate(bookmark.Url);
+    }
+
+    private void BookmarkRemove_Click(object sender, RoutedEventArgs e)
+    {
+        if (((FrameworkElement)sender).DataContext is not Bookmark bookmark) return;
+
+        _bookmarks.Remove(bookmark.Url);
+        ShowBookmarkBar();
+        UpdateStar();
     }
 
     private void UpdateContentInset()
@@ -231,6 +311,7 @@ public partial class MainWindow : Window
         TabStripRow.Visibility = on ? Visibility.Collapsed : Visibility.Visible;
         NavRow.Visibility = on ? Visibility.Collapsed : Visibility.Visible;
         ShowUpdateBar();
+        ShowBookmarkBar();
 
         if (on)
         {

@@ -117,13 +117,155 @@
       <Setter Property="FontWeight" Value="SemiBold"/>
     </Style>
 
+    <Style x:Key="StarButton" TargetType="Button">
+      <Setter Property="Background" Value="Transparent"/>
+      <Setter Property="Foreground" Value="{StaticResource FgDim}"/>
+      <Setter Property="BorderThickness" Value="0"/>
+      <Setter Property="Width" Value="26"/>
+      <Setter Property="Height" Value="26"/>
+      <Setter Property="FontSize" Value="14"/>
+      <Setter Property="FontFamily" Value="Segoe Fluent Icons, Segoe MDL2 Assets"/>
+      <Setter Property="Cursor" Value="Hand"/>
+      <Setter Property="Template">
+        <Setter.Value>
+          <ControlTemplate TargetType="Button">
+            <Border x:Name="bd" Background="{TemplateBinding Background}" CornerRadius="5">
+              <ContentPresenter HorizontalAlignment="Center" VerticalAlignment="Center"/>
+            </Border>
+            <ControlTemplate.Triggers>
+              <Trigger Property="IsMouseOver" Value="True">
+                <Setter TargetName="bd" Property="Background" Value="{StaticResource Hover}"/>
+              </Trigger>
+            </ControlTemplate.Triggers>
+          </ControlTemplate>
+        </Setter.Value>
+      </Setter>
+    </Style>
+
+    <Style x:Key="BookmarkChip" TargetType="Button">
+      <Setter Property="Background" Value="Transparent"/>
+      <Setter Property="Foreground" Value="{StaticResource FgDim}"/>
+      <Setter Property="BorderThickness" Value="0"/>
+      <Setter Property="Height" Value="26"/>
+      <Setter Property="Padding" Value="8,0,9,0"/>
+      <Setter Property="Margin" Value="0,0,2,0"/>
+      <Setter Property="FontSize" Value="12"/>
+      <Setter Property="Cursor" Value="Hand"/>
+      <Setter Property="Template">
+        <Setter.Value>
+          <ControlTemplate TargetType="Button">
+            <Border x:Name="bd" Background="{TemplateBinding Background}" CornerRadius="6"
+                    Padding="{TemplateBinding Padding}">
+              <ContentPresenter VerticalAlignment="Center"/>
+            </Border>
+            <ControlTemplate.Triggers>
+              <Trigger Property="IsMouseOver" Value="True">
+                <Setter TargetName="bd" Property="Background" Value="{StaticResource Hover}"/>
+                <Setter Property="Foreground" Value="{StaticResource Fg}"/>
+              </Trigger>
+            </ControlTemplate.Triggers>
+          </ControlTemplate>
+        </Setter.Value>
+      </Setter>
+    </Style>
+
+    <Style x:Key="ChromeMenuItem" TargetType="MenuItem">
+      <Setter Property="Foreground" Value="{StaticResource Fg}"/>
+      <Setter Property="Background" Value="Transparent"/>
+      <Setter Property="FontSize" Value="12"/>
+      <Setter Property="Height" Value="32"/>
+      <Setter Property="Padding" Value="10,0,14,0"/>
+      <Setter Property="Cursor" Value="Hand"/>
+      <Setter Property="Template">
+        <Setter.Value>
+          <ControlTemplate TargetType="MenuItem">
+            <Border x:Name="bd" Background="{TemplateBinding Background}" CornerRadius="6"
+                    Padding="{TemplateBinding Padding}" SnapsToDevicePixels="True">
+              <Grid>
+                <Grid.ColumnDefinitions>
+                  <ColumnDefinition Width="Auto"/>
+                  <ColumnDefinition Width="*"/>
+                </Grid.ColumnDefinitions>
+                <ContentPresenter x:Name="icon" ContentSource="Icon" VerticalAlignment="Center"
+                                  Margin="0,0,10,0"/>
+                <ContentPresenter Grid.Column="1" ContentSource="Header" VerticalAlignment="Center"
+                                  RecognizesAccessKey="True"/>
+              </Grid>
+            </Border>
+            <ControlTemplate.Triggers>
+              <Trigger Property="IsHighlighted" Value="True">
+                <Setter TargetName="bd" Property="Background" Value="{StaticResource Hover}"/>
+              </Trigger>
+              <Trigger Property="IsEnabled" Value="False">
+                <Setter Property="Foreground" Value="#5C5C66"/>
+              </Trigger>
+            </ControlTemplate.Triggers>
+          </ControlTemplate>
+        </Setter.Value>
+      </Setter>
+    </Style>
+
+    <Style x:Key="ChromeContextMenu" TargetType="ContextMenu">
+      <Setter Property="Padding" Value="5"/>
+      <Setter Property="ItemContainerStyle" Value="{StaticResource ChromeMenuItem}"/>
+      <Setter Property="Template">
+        <Setter.Value>
+          <ControlTemplate TargetType="ContextMenu">
+            <Border x:Name="shell" Margin="10" Opacity="0"
+                    Background="#1F1F26" BorderBrush="#3A3A45" BorderThickness="1"
+                    CornerRadius="9" Padding="{TemplateBinding Padding}"
+                    RenderTransformOrigin="0.5,0">
+              <Border.RenderTransform>
+                <TransformGroup>
+                  <ScaleTransform x:Name="shellScale" ScaleX="1" ScaleY="1"/>
+                  <TranslateTransform x:Name="shellSlide" Y="0"/>
+                </TransformGroup>
+              </Border.RenderTransform>
+              <Border.Effect>
+                <DropShadowEffect BlurRadius="18" ShadowDepth="4" Direction="270" Opacity="0.5" Color="Black"/>
+              </Border.Effect>
+              <StackPanel IsItemsHost="True" KeyboardNavigation.DirectionalNavigation="Cycle"/>
+            </Border>
+
+            <ControlTemplate.Triggers>
+              <Trigger Property="IsOpen" Value="True">
+                <Trigger.EnterActions>
+                  <BeginStoryboard>
+                    <Storyboard>
+                      <DoubleAnimation Storyboard.TargetName="shell"
+                                       Storyboard.TargetProperty="Opacity"
+                                       From="0" To="1" Duration="0:0:0.12"/>
+                      <DoubleAnimation Storyboard.TargetName="shellScale"
+                                       Storyboard.TargetProperty="ScaleY"
+                                       From="0.88" To="1" Duration="0:0:0.16">
+                        <DoubleAnimation.EasingFunction>
+                          <CubicEase EasingMode="EaseOut"/>
+                        </DoubleAnimation.EasingFunction>
+                      </DoubleAnimation>
+                      <DoubleAnimation Storyboard.TargetName="shellSlide"
+                                       Storyboard.TargetProperty="Y"
+                                       From="-7" To="0" Duration="0:0:0.16">
+                        <DoubleAnimation.EasingFunction>
+                          <CubicEase EasingMode="EaseOut"/>
+                        </DoubleAnimation.EasingFunction>
+                      </DoubleAnimation>
+                    </Storyboard>
+                  </BeginStoryboard>
+                </Trigger.EnterActions>
+              </Trigger>
+            </ControlTemplate.Triggers>
+          </ControlTemplate>
+        </Setter.Value>
+      </Setter>
+    </Style>
+
     <Style x:Key="AddressBox" TargetType="TextBox">
-      <Setter Property="Background" Value="{StaticResource FieldBg}"/>
+      <Setter Property="Background" Value="Transparent"/>
       <Setter Property="Foreground" Value="{StaticResource Fg}"/>
       <Setter Property="CaretBrush" Value="{StaticResource Fg}"/>
       <Setter Property="SelectionBrush" Value="{StaticResource Accent}"/>
       <Setter Property="BorderThickness" Value="0"/>
-      <Setter Property="Padding" Value="11,0,11,0"/>
+      <Setter Property="Padding" Value="11,0,4,0"/>
       <Setter Property="VerticalContentAlignment" Value="Center"/>
       <Setter Property="FontSize" Value="13"/>
       <Setter Property="Height" Value="30"/>
