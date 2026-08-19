@@ -51,12 +51,31 @@
                 <StackPanel Orientation="Horizontal"/>
               </ItemsPanelTemplate>
             </ItemsControl.ItemsPanel>
+            <ItemsControl.ItemContainerStyle>
+              <Style TargetType="ContentPresenter">
+                <Style.Triggers>
+                  <DataTrigger Binding="{Binding IsDragging}" Value="True">
+                    <Setter Property="Panel.ZIndex" Value="10"/>
+                  </DataTrigger>
+                </Style.Triggers>
+              </Style>
+            </ItemsControl.ItemContainerStyle>
             <ItemsControl.ItemTemplate>
               <DataTemplate>
                 <Border x:Name="TabRoot" Background="{StaticResource TabBg}"
                         CornerRadius="7,7,0,0" Margin="0,0,3,0" Padding="11,0,5,0"
                         Height="33" MinWidth="130" MaxWidth="220" Cursor="Hand"
-                        MouseLeftButtonDown="Tab_MouseDown">
+                        MouseLeftButtonDown="Tab_MouseDown"
+                        MouseMove="Tab_MouseMove"
+                        MouseLeftButtonUp="Tab_MouseUp"
+                        LostMouseCapture="Tab_LostCapture"
+                        RenderTransformOrigin="0.5,0.5">
+                  <Border.RenderTransform>
+                    <TransformGroup>
+                      <ScaleTransform x:Name="TabScale" ScaleX="1" ScaleY="1"/>
+                      <TranslateTransform X="{Binding DragOffset}"/>
+                    </TransformGroup>
+                  </Border.RenderTransform>
                   <Grid>
                     <Grid.ColumnDefinitions>
                       <ColumnDefinition Width="Auto"/>
@@ -78,6 +97,37 @@
                   <DataTrigger Binding="{Binding IsActive}" Value="True">
                     <Setter TargetName="TabRoot" Property="Background" Value="{StaticResource TabActiveBg}"/>
                     <Setter TargetName="TabRoot" Property="Height" Value="34"/>
+                  </DataTrigger>
+
+                  <DataTrigger Binding="{Binding IsDragging}" Value="True">
+                    <Setter TargetName="TabRoot" Property="Background" Value="{StaticResource TabActiveBg}"/>
+                    <Setter TargetName="TabRoot" Property="Cursor" Value="SizeWE"/>
+                    <Setter TargetName="TabRoot" Property="Effect">
+                      <Setter.Value>
+                        <DropShadowEffect BlurRadius="14" ShadowDepth="3" Direction="270"
+                                          Opacity="0.55" Color="Black"/>
+                      </Setter.Value>
+                    </Setter>
+                    <DataTrigger.EnterActions>
+                      <BeginStoryboard>
+                        <Storyboard>
+                          <DoubleAnimation Storyboard.TargetName="TabScale" Storyboard.TargetProperty="ScaleX"
+                                           To="1.04" Duration="0:0:0.10"/>
+                          <DoubleAnimation Storyboard.TargetName="TabScale" Storyboard.TargetProperty="ScaleY"
+                                           To="1.06" Duration="0:0:0.10"/>
+                        </Storyboard>
+                      </BeginStoryboard>
+                    </DataTrigger.EnterActions>
+                    <DataTrigger.ExitActions>
+                      <BeginStoryboard>
+                        <Storyboard>
+                          <DoubleAnimation Storyboard.TargetName="TabScale" Storyboard.TargetProperty="ScaleX"
+                                           To="1" Duration="0:0:0.14"/>
+                          <DoubleAnimation Storyboard.TargetName="TabScale" Storyboard.TargetProperty="ScaleY"
+                                           To="1" Duration="0:0:0.14"/>
+                        </Storyboard>
+                      </BeginStoryboard>
+                    </DataTrigger.ExitActions>
                   </DataTrigger>
                 </DataTemplate.Triggers>
               </DataTemplate>

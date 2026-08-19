@@ -5,7 +5,9 @@ using System.Windows;
 using System.Windows.Input;
 using System.Windows.Interop;
 using System.Windows.Media;
+using System.Windows.Shell;
 using Lucent.Bookmarks;
+using Lucent.Home;
 using Lucent.Updates;
 using Microsoft.Web.WebView2.Core;
 
@@ -15,6 +17,8 @@ public partial class MainWindow : Window
 {
     private readonly ObservableCollection<BrowserTab> _tabs = new();
     private readonly BookmarkStore _bookmarks = new();
+    private readonly VisitStore _visits = new();
+    private HomePage? _home;
 
     private CoreWebView2Environment? _environment;
     private BrowserTab? _active;
@@ -50,9 +54,12 @@ public partial class MainWindow : Window
         BookmarkBar.ItemsSource = _bookmarks.Items;
         ShowBookmarkBar();
 
+        _visits.Load();
+        _home = new HomePage(_bookmarks, _visits);
+
         TabStrip.ItemsSource = _tabs;
         Loaded += OnLoaded;
-        StateChanged += (_, _) => UpdateContentInset();
+        StateChanged += (_, _) => { UpdateContentInset(); UpdateResizeBorder(); };
         Closed += (_, _) => { foreach (BrowserTab tab in _tabs) tab.Dispose(); };
     }
 
@@ -154,7 +161,7 @@ public partial class MainWindow : Window
 
     private async Task<BrowserTab> OpenTabAsync(string? url, bool activate)
     {
-        var tab = new BrowserTab();
+        var tab = new BrowserTab { Home = _home, Visits = _visits };
         _tabs.Add(tab);
         ContentHost.Children.Add(tab.View);
 
@@ -222,10 +229,12 @@ public partial class MainWindow : Window
         ForwardButton.IsEnabled = _active.CanGoForward;
 
         if (!AddressBar.IsKeyboardFocusWithin)
-            AddressBar.Text = _active.Source;
+            AddressBar.Text = HomePage.IsHome(_active.Source) ? string.Empty : _active.Source;
 
         BlockCount.Text = $"{_active.Blocker.BlockedCount} blocked";
-        Title = string.IsNullOrWhiteSpace(_active.Title) ? "Lucent" : $"{_active.Title} - Lucent";
+        Title = string.IsNullOrWhiteSpace(_active.Title) || HomePage.IsHome(_active.Source)
+            ? "Lucent"
+            : $"{_active.Title} - Lucent";
 
         UpdateStar();
     }
@@ -236,6 +245,10 @@ public partial class MainWindow : Window
 
     private void UpdateStar()
     {
+        StarButton.Visibility = HomePage.IsHome(_active?.Source)
+            ? Visibility.Collapsed
+            : Visibility.Visible;
+
         bool saved = _bookmarks.Contains(_active?.Source);
 
         StarButton.Content = saved ? StarFilled : StarOutline;
@@ -407,6 +420,9 @@ public partial class MainWindow : Window
     [DllImport("dwmapi.dll")]
     private static extern int DwmSetWindowAttribute(IntPtr hwnd, int attribute, ref int value, int size);
 
+    [DllImport("user32.dll")]
+    private static extern bool GetCursorPos(out NativePoint point);
+
 
     private void Minimize_Click(object sender, RoutedEventArgs e) => WindowState = WindowState.Minimized;
 
@@ -415,9 +431,121 @@ public partial class MainWindow : Window
 
     private void CloseWindow_Click(object sender, RoutedEventArgs e) => Close();
 
+
+    private BrowserTab? _dragTab;
+    private Point _dragOrigin;
+    private bool _dragStarted;
+
+    private const double DragThreshold = 4.0;
+
     private void Tab_MouseDown(object sender, MouseButtonEventArgs e)
     {
-        if (((FrameworkElement)sender).DataContext is BrowserTab tab) SelectTab(tab);
+        if (((FrameworkElement)sender).DataContext is not BrowserTab tab) return;
+
+        SelectTab(tab);
+
+        _dragTab = tab;
+        _dragOrigin = e.GetPosition(this);
+        _dragStarted = false;
+
+        ((UIElement)sender).CaptureMouse();
+    }
+
+    private void Tab_MouseMove(object sender, MouseEventArgs e)
+    {
+        if (_dragTab is null || e.LeftButton != MouseButtonState.Pressed) return;
+
+        Point here = e.GetPosition(this);
+
+        if (!_dragStarted)
+        {
+            Vector moved = here - _dragOrigin;
+            if (Math.Abs(moved.X) < DragThreshold && Math.Abs(moved.Y) < DragThreshold) return;
+
+            _dragStarted = true;
+            if (_tabs.Count > 1) _dragTab.IsDragging = true;
+        }
+
+        if (_tabs.Count > 1 && IsOverTabStrip(here))
+        {
+            _dragTab.DragOffset = here.X - _dragOrigin.X;
+
+            if (TabUnder(here) is { } target)
+            {
+                _tabs.Move(_tabs.IndexOf(_dragTab), _tabs.IndexOf(target));
+
+                _dragOrigin = here;
+                _dragTab.DragOffset = 0;
+            }
+            return;
+        }
+
+        EndTabDrag(sender);
+
+        RestoreBeforeDrag(here);
+
+        try { DragMove(); } catch (InvalidOperationException) { }
+    }
+
+    private void Tab_MouseUp(object sender, MouseButtonEventArgs e) => EndTabDrag(sender);
+
+    private void Tab_LostCapture(object sender, MouseEventArgs e) => EndTabDrag(sender);
+
+    private void RestoreBeforeDrag(Point inWindow)
+    {
+        if (WindowState != WindowState.Maximized) return;
+
+        double acrossWindow = ActualWidth > 0 ? inWindow.X / ActualWidth : 0.5;
+
+        GetCursorPos(out NativePoint cursor);
+        double restoredWidth = RestoreBounds.Width > 0 ? RestoreBounds.Width : Width;
+
+        WindowState = WindowState.Normal;
+
+        Left = cursor.x - restoredWidth * acrossWindow;
+        Top = cursor.y - inWindow.Y;
+    }
+
+    private void UpdateResizeBorder()
+    {
+        if (WindowChrome.GetWindowChrome(this) is not { } chrome) return;
+
+        chrome.ResizeBorderThickness = WindowState == WindowState.Maximized
+            ? new Thickness(0)
+            : new Thickness(6);
+    }
+
+    private void EndTabDrag(object sender)
+    {
+        if (sender is UIElement element && element.IsMouseCaptured) element.ReleaseMouseCapture();
+
+        if (_dragTab is not null)
+        {
+            _dragTab.IsDragging = false;
+            _dragTab.DragOffset = 0;        }
+
+        _dragTab = null;
+        _dragStarted = false;
+    }
+
+    private bool IsOverTabStrip(Point point)
+    {
+        Point topLeft = TabStripRow.TranslatePoint(new Point(0, 0), this);
+        return point.Y >= topLeft.Y && point.Y <= topLeft.Y + TabStripRow.ActualHeight;
+    }
+
+    private BrowserTab? TabUnder(Point inWindow)
+    {
+        for (int i = 0; i < _tabs.Count; i++)
+        {
+            if (ReferenceEquals(_tabs[i], _dragTab)) continue;
+            if (TabStrip.ItemContainerGenerator.ContainerFromIndex(i) is not FrameworkElement slot) continue;
+
+            Point topLeft = slot.TranslatePoint(new Point(0, 0), this);
+            if (inWindow.X >= topLeft.X && inWindow.X <= topLeft.X + slot.ActualWidth) return _tabs[i];
+        }
+
+        return null;
     }
 
     private void TabClose_Click(object sender, RoutedEventArgs e)

@@ -2,7 +2,7 @@ namespace Lucent;
 
 public static class Url
 {
-    public const string Home = "https://www.youtube.com/";
+    public const string Home = Lucent.Home.HomePage.Url;
 
     private const string SearchTemplate = "https://duckduckgo.com/?q={0}";
 

@@ -4,6 +4,7 @@ using System.Runtime.CompilerServices;
 using System.Windows.Media;
 using System.Windows.Media.Imaging;
 using Lucent.Blocking;
+using Lucent.Home;
 using Microsoft.Web.WebView2.Core;
 using Microsoft.Web.WebView2.Wpf;
 
@@ -17,6 +18,20 @@ public sealed class BrowserTab : INotifyPropertyChanged
     private string _title = "New Tab";
     private bool _isActive;
     private ImageSource? _favicon;
+    private bool _isDragging;
+    private double _dragOffset;
+
+    public bool IsDragging
+    {
+        get => _isDragging;
+        set => Set(ref _isDragging, value);
+    }
+
+    public double DragOffset
+    {
+        get => _dragOffset;
+        set => Set(ref _dragOffset, value);
+    }
 
     public string Title
     {
@@ -49,6 +64,10 @@ public sealed class BrowserTab : INotifyPropertyChanged
     public event Action<BrowserTab, CoreWebView2NewWindowRequestedEventArgs>? NewWindowRequested;
     public event Action<BrowserTab, bool>? FullScreenChanged;
 
+    public HomePage? Home { get; set; }
+
+    public VisitStore? Visits { get; set; }
+
     public async Task InitializeAsync(CoreWebView2Environment environment, string? navigateTo)
     {
         await View.EnsureCoreWebView2Async(environment);
@@ -60,7 +79,13 @@ public sealed class BrowserTab : INotifyPropertyChanged
         core.NavigationStarting += OnNavigationStartingSecurity;
         core.PermissionRequested += OnPermissionRequested;
 
+        Home?.Attach(core);
         await Blocker.AttachAsync(core);
+
+        core.NavigationCompleted += (_, e) =>
+        {
+            if (e.IsSuccess) Visits?.Record(core.Source, core.DocumentTitle, Favicon);
+        };
 
         core.DocumentTitleChanged += (_, _) =>
         {

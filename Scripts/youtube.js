@@ -1,6 +1,8 @@
 (function () {
   'use strict';
 
+  var DEBUG = false;
+
   var L = window.__LUCENT_NS__;
   if (!L) return;
   if (!L.hostMatches('youtube.com') &&
@@ -105,6 +107,64 @@
     'ytd-mini-game-card-view-model { display: none !important; }',
     'mini-game-card-view-model { display: none !important; }'
   ].join('\n'));
+
+  if (L.hostMatches('youtube.com')) {
+    var A_YEAR = 60 * 60 * 24 * 365;
+
+    var readWide = function () {
+      var found = /(?:^|;\s*)wide=([^;]*)/.exec(document.cookie);
+      return found ? found[1] : null;
+    };
+
+    var written = null;
+
+    var persist = function () {
+      var value = readWide();
+      if (value === null || value === written) return;
+
+      document.cookie = 'wide=' + value + '; domain=.youtube.com; path=/; secure' +
+                        '; max-age=' + A_YEAR;
+      written = value;
+
+      if (DEBUG) console.log('[Lucent] theatre: made wide =', value, 'persistent');
+    };
+
+    persist();
+    setInterval(persist, 2000);
+
+    try { localStorage.removeItem('lucent.wide'); } catch (e) { }
+
+    if (DEBUG) watchForTheatreState();
+  }
+
+  function watchForTheatreState() {
+    function layout() {
+      var flexy = document.querySelector('ytd-watch-flexy');
+      if (!flexy) return 'not a watch page';
+      return flexy.hasAttribute('theater') ? 'THEATRE' : 'default';
+    }
+
+    console.log('[Lucent] theatre at document-created: wide cookie =', readWide(),
+                '| layout =', layout());
+
+    var lastWide = readWide();
+    var lastLayout = layout();
+
+    setInterval(function () {
+      var nextWide = readWide();
+      var nextLayout = layout();
+
+      if (nextWide !== lastWide) console.log('[Lucent] wide cookie:', lastWide, '->', nextWide);
+
+      if (nextLayout !== lastLayout) {
+        console.log('[Lucent] layout:', lastLayout, '->', nextLayout,
+                    '| wide =', nextWide);
+      }
+
+      lastWide = nextWide;
+      lastLayout = nextLayout;
+    }, 250);
+  }
 
   var player = null;
   setInterval(function () {

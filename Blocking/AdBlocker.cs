@@ -1,6 +1,7 @@
 using System.IO;
 using System.Reflection;
 using System.Text.Json;
+using Lucent.Home;
 using Microsoft.Web.WebView2.Core;
 
 namespace Lucent.Blocking;
@@ -82,6 +83,8 @@ public sealed class AdBlocker
     private void OnWebResourceRequested(object? sender, CoreWebView2WebResourceRequestedEventArgs e)
     {
         var core = (CoreWebView2)sender!;
+
+        if (HomePage.IsHome(e.Request.Uri)) return;
 
         e.Response = core.Environment.CreateWebResourceResponse(
             null, 403, "Blocked by Lucent", "Access-Control-Allow-Origin: *");
