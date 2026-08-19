@@ -1,4 +1,5 @@
 using System.Collections.ObjectModel;
+using System.ComponentModel;
 using System.IO;
 using System.Text.Json;
 using System.Text.Json.Serialization;
@@ -7,9 +8,21 @@ using System.Windows.Media.Imaging;
 
 namespace Lucent.Bookmarks;
 
-public sealed class Bookmark
+public sealed class Bookmark : INotifyPropertyChanged
 {
-    public string Title { get; set; } = "";
+    private string _title = "";
+
+    public string Title
+    {
+        get => _title;
+        set
+        {
+            if (_title == value) return;
+            _title = value;
+            PropertyChanged?.Invoke(this, new PropertyChangedEventArgs(nameof(Title)));
+        }
+    }
+
     public string Url { get; set; } = "";
 
     public string? Icon { get; set; }
@@ -46,6 +59,8 @@ public sealed class Bookmark
             return _image;
         }
     }
+
+    public event PropertyChangedEventHandler? PropertyChanged;
 }
 
 public sealed class BookmarkStore
@@ -134,6 +149,15 @@ public sealed class BookmarkStore
         if (Find(url) is not { } existing) return;
 
         Items.Remove(existing);
+        Save();
+    }
+
+    public void Rename(string? url, string? title)
+    {
+        if (Find(url) is not { } existing) return;
+        if (string.IsNullOrWhiteSpace(title)) return;
+
+        existing.Title = title.Trim();
         Save();
     }
 

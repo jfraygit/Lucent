@@ -191,10 +191,101 @@
   footer a { color: var(--dim); font-size: 11px; text-decoration: none; }
   footer a:hover { color: var(--fg); }
 
-  /* Someone who has asked for less movement gets the page, not the arrival. */
+  /* --- History drawer ---------------------------------------------------
+     Off-canvas rather than hidden: it is translated past the right edge and slid
+     back, so opening and closing are the same movement in either direction and the
+     list inside keeps its scroll position between visits. */
+  #drawer {
+    position: fixed; top: 0; right: 0; bottom: 0;
+    width: 380px; max-width: 92vw;
+    display: flex; flex-direction: column;
+    background: #16161A;
+    border-left: 1px solid #2A2A32;
+    transform: translateX(100%);
+    transition: transform .28s cubic-bezier(.3,.85,.3,1);
+    z-index: 2;
+  }
+  #drawer.open { transform: none; }
+
+  /* The handle rides on the drawer's own left edge, so it travels with it and the
+     one control both opens and closes. */
+  #handle {
+    position: absolute; top: 50%; left: -26px;
+    width: 26px; height: 64px;
+    transform: translateY(-50%);
+    display: flex; align-items: center; justify-content: center;
+    background: #16161A;
+    border: 1px solid #2A2A32; border-right: 0;
+    border-radius: 9px 0 0 9px;
+    color: var(--dim); cursor: pointer;
+    font-size: 12px; line-height: 1;
+    transition: color .15s, background .15s;
+  }
+  #handle:hover { background: #1E1E25; color: var(--fg); }
+  #handle span { transition: transform .28s cubic-bezier(.3,.85,.3,1); }
+  #drawer.open #handle span { transform: rotate(180deg); }
+
+  .drawer-head { padding: 16px 16px 12px; border-bottom: 1px solid #24242B; }
+  .drawer-head h2 { margin: 0 0 11px 2px; }
+
+  #find {
+    width: 100%; height: 34px; padding: 0 12px;
+    border: 1px solid transparent; border-radius: 8px;
+    background: var(--field); color: var(--fg);
+    font-size: 13px; font-family: inherit; outline: none;
+  }
+  #find:focus { border-color: var(--accent); }
+
+  #entries { flex: 1; overflow-y: auto; padding: 8px 8px 14px; }
+
+  /* Sticky so the day you are reading stays named while you scroll through it. */
+  .day {
+    position: sticky; top: 0;
+    padding: 9px 8px 6px;
+    background: #16161A;
+    font-size: 11px; font-weight: 600; letter-spacing: 1.1px;
+    text-transform: uppercase; color: var(--dim);
+  }
+
+  .entry {
+    display: flex; align-items: center; gap: 10px;
+    padding: 7px 8px; border-radius: 8px;
+    color: var(--fg); text-decoration: none;
+  }
+  .entry:hover { background: var(--tile); }
+  .entry img, .entry .dot {
+    width: 16px; height: 16px; flex: 0 0 16px; border-radius: 4px;
+  }
+  .entry .dot { background: #34343E; }
+  .entry .text { min-width: 0; }
+  .entry .t {
+    font-size: 12.5px; white-space: nowrap; overflow: hidden; text-overflow: ellipsis;
+  }
+  .entry .h { font-size: 11px; color: var(--dim); }
+  .entry .when { margin-left: auto; font-size: 11px; color: var(--dim); white-space: nowrap; }
+
+  .drawer-foot {
+    padding: 12px 16px 14px; border-top: 1px solid #24242B;
+    display: flex; align-items: center; gap: 10px;
+    font-size: 11.5px; color: var(--dim);
+  }
+  .drawer-foot select {
+    background: var(--field); color: var(--fg); font-family: inherit; font-size: 11.5px;
+    border: 1px solid #33333C; border-radius: 6px; padding: 4px 6px; outline: none;
+  }
+  #wipe {
+    margin-left: auto; background: none; border: 0; padding: 4px 6px;
+    position: static; width: auto; height: auto; border-radius: 6px;
+    color: var(--dim); font-family: inherit; font-size: 11.5px; cursor: pointer;
+  }
+  #wipe:hover { background: var(--tile-hover); color: var(--fg); }
+
+  /* Someone who has asked for less movement gets the page, not the arrival. The
+     drawer still opens and closes; it simply stops sliding. */
   @media (prefers-reduced-motion: reduce) {
     .mark, h1, form, section, footer { animation: none; }
     .tile:hover { transform: none; }
+    #drawer, #handle span { transition: none; }
   }
 </style>
 </head>
@@ -215,6 +306,30 @@
 
   <footer><a id="clear" href="/forget?all=1">Clear Most Visited</a></footer>
 </main>
+
+<aside id="drawer">
+  <div id="handle" role="button" tabindex="0" aria-label="History"><span>&#10094;</span></div>
+
+  <div class="drawer-head">
+    <h2>History</h2>
+    <input id="find" type="text" placeholder="Search History"
+           spellcheck="false" autocomplete="off" aria-label="Search history">
+  </div>
+
+  <div id="entries"></div>
+
+  <div class="drawer-foot">
+    <label for="keep">Keep For</label>
+    <select id="keep">
+      <option value="1">1 Day</option>
+      <option value="7">1 Week</option>
+      <option value="30">1 Month</option>
+      <option value="90">3 Months</option>
+      <option value="0">Forever</option>
+    </select>
+    <button id="wipe" type="button">Clear History</button>
+  </div>
+</aside>
 
 <script>
 // Injected by the host when the page is served. There is no host/page bridge in this
@@ -322,6 +437,158 @@ rows.appendChild(row('Most Visited', DATA.visited, true,
                      'Sites you visit will appear here.'));
 
 if (!DATA.visited.length) document.getElementById('clear').style.display = 'none';
+
+// --- History drawer -------------------------------------------------------
+// Asked for when the drawer is first opened rather than handed over with the page:
+// a history is far larger than a row of tiles and is usually never looked at, so
+// baking it in would be paid for on every new tab. The request goes to this origin
+// and is answered by the host, so nothing leaves the machine.
+var drawer = document.getElementById('drawer');
+var entries = document.getElementById('entries');
+var find = document.getElementById('find');
+var keep = document.getElementById('keep');
+
+// Not "history": that name is already the browser's own on window, and assigning to
+// it fails rather than shadowing it. Nor may anything below reuse a name from the
+// tile code above -- function declarations are hoisted and the last one of a name
+// wins, so a second row() would silently become the one the sections call.
+var kept = null;
+
+function ask(path) {
+  return fetch(path, { cache: 'no-store' }).then(function (r) { return r.json(); });
+}
+
+function when(ms) {
+  return new Date(ms).toLocaleTimeString([], { hour: 'numeric', minute: '2-digit' });
+}
+
+// Compared as local dates, not by dividing the timestamp: days are not all the same
+// length, and an hour of daylight saving would file an evening under the wrong one.
+function dayOf(ms) {
+  var d = new Date(ms);
+  var today = new Date();
+  var yesterday = new Date(today.getFullYear(), today.getMonth(), today.getDate() - 1);
+
+  if (d.toDateString() === today.toDateString()) return 'Today';
+  if (d.toDateString() === yesterday.toDateString()) return 'Yesterday';
+
+  return d.toLocaleDateString([], { weekday: 'long', day: 'numeric', month: 'long' });
+}
+
+function entryRow(item) {
+  var a = document.createElement('a');
+  a.className = 'entry';
+  a.href = item.url;
+  a.title = item.url;
+
+  var icon = kept.icons[item.host];
+  if (icon) {
+    var img = document.createElement('img');
+    img.src = 'data:image/png;base64,' + icon;
+    img.alt = '';
+    a.appendChild(img);
+  } else {
+    var dot = document.createElement('span');
+    dot.className = 'dot';
+    a.appendChild(dot);
+  }
+
+  var text = document.createElement('span');
+  text.className = 'text';
+
+  var title = document.createElement('div');
+  title.className = 't';
+  title.textContent = item.title || item.host;
+
+  var host = document.createElement('div');
+  host.className = 'h';
+  host.textContent = item.host;
+
+  text.appendChild(title);
+  text.appendChild(host);
+  a.appendChild(text);
+
+  var stamp = document.createElement('span');
+  stamp.className = 'when';
+  stamp.textContent = when(item.at);
+  a.appendChild(stamp);
+
+  return a;
+}
+
+function draw() {
+  entries.textContent = '';
+  if (!kept) return;
+
+  var needle = find.value.trim().toLowerCase();
+  var shown = kept.entries.filter(function (item) {
+    if (!needle) return true;
+    return (item.title || '').toLowerCase().indexOf(needle) !== -1 ||
+           (item.url || '').toLowerCase().indexOf(needle) !== -1;
+  });
+
+  if (!shown.length) {
+    var none = document.createElement('div');
+    none.className = 'empty';
+    none.style.padding = '14px 10px';
+    none.textContent = needle ? 'Nothing matches that.' : 'Nothing here yet.';
+    entries.appendChild(none);
+    return;
+  }
+
+  // The list arrives newest first, so a heading is needed only where the day
+  // changes -- no grouping pass, and it stays in order for free.
+  var last = null;
+  shown.forEach(function (item) {
+    var day = dayOf(item.at);
+    if (day !== last) {
+      var head = document.createElement('div');
+      head.className = 'day';
+      head.textContent = day;
+      entries.appendChild(head);
+      last = day;
+    }
+    entries.appendChild(entryRow(item));
+  });
+}
+
+function load() {
+  return ask('/history.json').then(function (data) {
+    kept = data;
+    keep.value = String(data.retentionDays);
+    draw();
+  });
+}
+
+function toggle() {
+  var opening = !drawer.classList.contains('open');
+  drawer.classList.toggle('open', opening);
+
+  if (!opening) return;
+  if (!kept) load().then(function () { find.focus(); });
+  else find.focus();
+}
+
+document.getElementById('handle').addEventListener('click', toggle);
+document.getElementById('handle').addEventListener('keydown', function (e) {
+  if (e.key === 'Enter' || e.key === ' ') { e.preventDefault(); toggle(); }
+});
+
+find.addEventListener('input', draw);
+
+document.addEventListener('keydown', function (e) {
+  if (e.key === 'Escape' && drawer.classList.contains('open')) toggle();
+});
+
+keep.addEventListener('change', function () {
+  // Reloaded rather than filtered in place: shortening the window deletes entries,
+  // and the list has to show what is actually kept rather than what was on screen.
+  ask('/history/retention?days=' + encodeURIComponent(keep.value)).then(load);
+});
+
+document.getElementById('wipe').addEventListener('click', function () {
+  ask('/history/clear').then(load);
+});
 </script>
 </body>
 </html>

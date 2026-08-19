@@ -179,19 +179,47 @@
       <Setter Property="Template">
         <Setter.Value>
           <ControlTemplate TargetType="MenuItem">
-            <Border x:Name="bd" Background="{TemplateBinding Background}" CornerRadius="6"
-                    Padding="{TemplateBinding Padding}" SnapsToDevicePixels="True">
-              <Grid>
-                <Grid.ColumnDefinitions>
-                  <ColumnDefinition Width="Auto"/>
-                  <ColumnDefinition Width="*"/>
-                </Grid.ColumnDefinitions>
-                <ContentPresenter x:Name="icon" ContentSource="Icon" VerticalAlignment="Center"
-                                  Margin="0,0,10,0"/>
-                <ContentPresenter Grid.Column="1" ContentSource="Header" VerticalAlignment="Center"
-                                  RecognizesAccessKey="True"/>
-              </Grid>
-            </Border>
+            <Grid>
+              <Border x:Name="bd" Background="{TemplateBinding Background}" CornerRadius="6"
+                      Padding="{TemplateBinding Padding}" SnapsToDevicePixels="True">
+                <Grid>
+                  <Grid.ColumnDefinitions>
+                    <ColumnDefinition Width="Auto"/>
+                    <ColumnDefinition Width="*"/>
+                    <ColumnDefinition Width="Auto"/>
+                  </Grid.ColumnDefinitions>
+                  <ContentPresenter x:Name="icon" ContentSource="Icon" VerticalAlignment="Center"
+                                    Margin="0,0,10,0"/>
+                  <ContentPresenter Grid.Column="1" ContentSource="Header" VerticalAlignment="Center"
+                                    RecognizesAccessKey="True"/>
+
+                  <TextBlock x:Name="gesture" Grid.Column="2" VerticalAlignment="Center"
+                             Margin="24,0,0,0" Foreground="{StaticResource FgDim}"
+                             Text="{TemplateBinding InputGestureText}"/>
+
+                  <TextBlock x:Name="arrow" Grid.Column="2" VerticalAlignment="Center"
+                             Margin="24,0,0,0" Visibility="Collapsed"
+                             FontFamily="Segoe Fluent Icons, Segoe MDL2 Assets"
+                             FontSize="10" Foreground="{StaticResource FgDim}"
+                             Text="&#xE76C;"/>
+                </Grid>
+              </Border>
+
+              <Popup x:Name="PART_Popup" AllowsTransparency="True" Focusable="False"
+                     IsOpen="{TemplateBinding IsSubmenuOpen}"
+                     Placement="Right" HorizontalOffset="-6" VerticalOffset="-9"
+                     PopupAnimation="Fade">
+                <Border Background="#1F1F26" BorderBrush="#3A3A45" BorderThickness="1"
+                        CornerRadius="9" Padding="5" Margin="10">
+                  <Border.Effect>
+                    <DropShadowEffect BlurRadius="18" ShadowDepth="4" Direction="270"
+                                      Opacity="0.5" Color="Black"/>
+                  </Border.Effect>
+                  <StackPanel IsItemsHost="True" KeyboardNavigation.DirectionalNavigation="Cycle"/>
+                </Border>
+              </Popup>
+            </Grid>
+
             <ControlTemplate.Triggers>
               <Trigger Property="IsHighlighted" Value="True">
                 <Setter TargetName="bd" Property="Background" Value="{StaticResource Hover}"/>
@@ -199,7 +227,24 @@
               <Trigger Property="IsEnabled" Value="False">
                 <Setter Property="Foreground" Value="#5C5C66"/>
               </Trigger>
+              <Trigger Property="HasItems" Value="True">
+                <Setter TargetName="arrow" Property="Visibility" Value="Visible"/>
+                <Setter TargetName="gesture" Property="Visibility" Value="Collapsed"/>
+              </Trigger>
             </ControlTemplate.Triggers>
+          </ControlTemplate>
+        </Setter.Value>
+      </Setter>
+    </Style>
+
+    <Style x:Key="ChromeMenuSeparator" TargetType="Separator">
+      <Setter Property="Height" Value="1"/>
+      <Setter Property="Margin" Value="6,5,6,5"/>
+      <Setter Property="Background" Value="#33333C"/>
+      <Setter Property="Template">
+        <Setter.Value>
+          <ControlTemplate TargetType="Separator">
+            <Border Background="{TemplateBinding Background}" SnapsToDevicePixels="True"/>
           </ControlTemplate>
         </Setter.Value>
       </Setter>

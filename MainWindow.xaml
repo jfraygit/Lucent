@@ -41,7 +41,7 @@
         <ColumnDefinition Width="Auto"/>
       </Grid.ColumnDefinitions>
 
-      <ScrollViewer Grid.Column="0" Margin="8,7,0,0"
+      <ScrollViewer Grid.Column="0" Margin="8,0,0,0"
                     HorizontalScrollBarVisibility="Hidden"
                     VerticalScrollBarVisibility="Disabled">
         <StackPanel Orientation="Horizontal">
@@ -62,13 +62,15 @@
             </ItemsControl.ItemContainerStyle>
             <ItemsControl.ItemTemplate>
               <DataTemplate>
+                <Grid Background="Transparent" Height="40" Margin="0,0,3,0" Cursor="Hand"
+                      MouseLeftButtonDown="Tab_MouseDown"
+                      MouseMove="Tab_MouseMove"
+                      MouseLeftButtonUp="Tab_MouseUp"
+                      LostMouseCapture="Tab_LostCapture">
                 <Border x:Name="TabRoot" Background="{StaticResource TabBg}"
-                        CornerRadius="7,7,0,0" Margin="0,0,3,0" Padding="11,0,5,0"
-                        Height="33" MinWidth="130" MaxWidth="220" Cursor="Hand"
-                        MouseLeftButtonDown="Tab_MouseDown"
-                        MouseMove="Tab_MouseMove"
-                        MouseLeftButtonUp="Tab_MouseUp"
-                        LostMouseCapture="Tab_LostCapture"
+                        CornerRadius="7,7,0,0" Padding="11,0,5,0"
+                        VerticalAlignment="Bottom"
+                        Height="33" MinWidth="130" MaxWidth="220"
                         RenderTransformOrigin="0.5,0.5">
                   <Border.RenderTransform>
                     <TransformGroup>
@@ -93,6 +95,7 @@
                             Click="TabClose_Click" ToolTip="Close Tab"/>
                   </Grid>
                 </Border>
+                </Grid>
                 <DataTemplate.Triggers>
                   <DataTrigger Binding="{Binding IsActive}" Value="True">
                     <Setter TargetName="TabRoot" Property="Background" Value="{StaticResource TabActiveBg}"/>
@@ -135,7 +138,7 @@
           </ItemsControl>
 
           <Button Content="&#xE710;" Style="{StaticResource IconButton}"
-                  VerticalAlignment="Top" Margin="2,2,0,0"
+                  VerticalAlignment="Top" Margin="2,9,0,0"
                   Click="NewTab_Click" ToolTip="New Tab (Ctrl+T)"
                   shell:WindowChrome.IsHitTestVisibleInChrome="True"/>
         </StackPanel>
@@ -230,6 +233,12 @@
               <Button.ContextMenu>
                 <ContextMenu Style="{StaticResource ChromeContextMenu}"
                              ui:MenuChrome.Animated="True">
+                  <MenuItem Header="Rename Bookmark" Click="BookmarkRename_Click">
+                    <MenuItem.Icon>
+                      <TextBlock Text="&#xE70F;" FontSize="13" Foreground="{StaticResource FgDim}"
+                                 FontFamily="Segoe Fluent Icons, Segoe MDL2 Assets"/>
+                    </MenuItem.Icon>
+                  </MenuItem>
                   <MenuItem Header="Remove Bookmark" Click="BookmarkRemove_Click">
                     <MenuItem.Icon>
                       <TextBlock Text="&#xE74D;" FontSize="13" Foreground="{StaticResource FgDim}"

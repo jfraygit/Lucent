@@ -8,6 +8,7 @@ using System.Windows.Media;
 using System.Windows.Shell;
 using Lucent.Bookmarks;
 using Lucent.Home;
+using Lucent.Ui;
 using Lucent.Updates;
 using Microsoft.Web.WebView2.Core;
 
@@ -18,7 +19,14 @@ public partial class MainWindow : Window
     private readonly ObservableCollection<BrowserTab> _tabs = new();
     private readonly BookmarkStore _bookmarks = new();
     private readonly VisitStore _visits = new();
+    private readonly WindowStateStore _window = new();
+    private readonly HistoryStore _history = new();
+    private readonly TabSession _session = new();
     private HomePage? _home;
+
+    private WindowState _lastVisibleState = WindowState.Normal;
+
+    private IntPtr _lastMonitor;
 
     private CoreWebView2Environment? _environment;
     private BrowserTab? _active;
@@ -55,11 +63,29 @@ public partial class MainWindow : Window
         ShowBookmarkBar();
 
         _visits.Load();
-        _home = new HomePage(_bookmarks, _visits);
+        _history.Load();
+        _session.Load();
+        _home = new HomePage(_bookmarks, _visits, _history);
+
+        _window.Load();
 
         TabStrip.ItemsSource = _tabs;
         Loaded += OnLoaded;
-        StateChanged += (_, _) => { UpdateContentInset(); UpdateResizeBorder(); };
+        StateChanged += (_, _) => { UpdateContentInset(); UpdateResizeBorder(); RememberWindowState(); };
+        LocationChanged += (_, _) => RememberMonitor();
+        Closing += (_, _) =>
+        {
+            _window.Maximized = _lastVisibleState == WindowState.Maximized;
+
+            if (RestoreBounds.Width > 0 && RestoreBounds.Height > 0)
+                _window.Bounds = RestoreBounds;
+
+            _window.Save();
+
+            SaveSession();
+
+            _history.Flush();
+        };
         Closed += (_, _) => { foreach (BrowserTab tab in _tabs) tab.Dispose(); };
     }
 
@@ -67,6 +93,9 @@ public partial class MainWindow : Window
     {
         ApplyRoundedCorners();
         UpdateContentInset();
+
+        UpdateResizeBorder();
+
         VersionLabel.Text = $"v{Release.CurrentDisplay}";
 
         var options = new CoreWebView2EnvironmentOptions
@@ -84,7 +113,7 @@ public partial class MainWindow : Window
             return;
         }
 
-        await OpenTabAsync(Url.Home, activate: true);
+        await RestoreSessionAsync();
 
         _ = CheckForUpdateAsync();
     }
@@ -159,15 +188,36 @@ public partial class MainWindow : Window
     }
 
 
+    private async Task RestoreSessionAsync()
+    {
+        if (_session.Urls.Count == 0)
+        {
+            await OpenTabAsync(Url.Home, activate: true);
+            return;
+        }
+
+        for (int i = 0; i < _session.Urls.Count; i++)
+            await OpenTabAsync(_session.Urls[i], activate: false);
+
+        SelectTab(_tabs[Math.Clamp(_session.Active, 0, _tabs.Count - 1)]);
+    }
+
+    private void SaveSession()
+    {
+        _session.Save(_tabs.Select(t => string.IsNullOrWhiteSpace(t.Source) ? Url.Home : t.Source),
+                      _active is null ? 0 : Math.Max(0, _tabs.IndexOf(_active)));
+    }
+
     private async Task<BrowserTab> OpenTabAsync(string? url, bool activate)
     {
-        var tab = new BrowserTab { Home = _home, Visits = _visits };
+        var tab = new BrowserTab { Home = _home, Visits = _visits, History = _history };
         _tabs.Add(tab);
         ContentHost.Children.Add(tab.View);
 
         tab.Changed += OnTabChanged;
         tab.FullScreenChanged += OnFullScreenChanged;
         tab.NewWindowRequested += OnNewWindowRequested;
+        tab.ContextMenuRequested += OnContextMenuRequested;
         tab.Blocker.BlockedCountChanged += _ => Dispatcher.BeginInvoke(UpdateChrome);
 
         await tab.InitializeAsync(_environment!, url);
@@ -204,11 +254,15 @@ public partial class MainWindow : Window
 
         if (ReferenceEquals(_active, tab))
             SelectTab(_tabs[Math.Min(index, _tabs.Count - 1)]);
+
+        SaveSession();
     }
 
     private void OnTabChanged(BrowserTab tab)
     {
         if (ReferenceEquals(tab, _active)) UpdateChrome();
+
+        SaveSession();
     }
 
     private async void OnNewWindowRequested(BrowserTab source, CoreWebView2NewWindowRequestedEventArgs e)
@@ -216,9 +270,12 @@ public partial class MainWindow : Window
         e.Handled = true;
         using CoreWebView2Deferral deferral = e.GetDeferral();
 
-        BrowserTab tab = await OpenTabAsync(null, activate: true);
+        BrowserTab tab = await OpenTabAsync(null, activate: false);
         e.NewWindow = tab.View.CoreWebView2;
     }
+
+    private void OnContextMenuRequested(BrowserTab source, CoreWebView2ContextMenuRequestedEventArgs e) =>
+        PageContextMenu.Show(source.View, e);
 
 
     private void UpdateChrome()
@@ -296,6 +353,16 @@ public partial class MainWindow : Window
         else _active.Navigate(bookmark.Url);
     }
 
+    private void BookmarkRename_Click(object sender, RoutedEventArgs e)
+    {
+        if (((FrameworkElement)sender).DataContext is not Bookmark bookmark) return;
+
+        var dialog = new RenameDialog(bookmark.Url, bookmark.Title) { Owner = this };
+        if (dialog.ShowDialog() != true) return;
+
+        _bookmarks.Rename(bookmark.Url, dialog.EnteredName);
+    }
+
     private void BookmarkRemove_Click(object sender, RoutedEventArgs e)
     {
         if (((FrameworkElement)sender).DataContext is not Bookmark bookmark) return;
@@ -326,6 +393,8 @@ public partial class MainWindow : Window
         ShowUpdateBar();
         ShowBookmarkBar();
 
+        SetCaptionStyle(!on);
+
         if (on)
         {
             _preFullScreenState = WindowState;
@@ -348,6 +417,80 @@ public partial class MainWindow : Window
 
         IntPtr handle = new WindowInteropHelper(this).Handle;
         HwndSource.FromHwnd(handle)?.AddHook(WndProc);
+
+        SetCaptionStyle(true);
+
+        RestoreSavedPlacement();
+    }
+
+    private void SetCaptionStyle(bool on)
+    {
+        IntPtr handle = new WindowInteropHelper(this).Handle;
+        if (handle == IntPtr.Zero) return;
+
+        const int WindowStyle = -16;
+        const int Caption = 0x00C00000;
+
+        int style = GetWindowLong(handle, WindowStyle);
+        if (style == 0) return;
+
+        SetWindowLong(handle, WindowStyle, on ? style | Caption : style & ~Caption);
+
+        if (IsVisible)
+        {
+            const uint NoSize = 0x0001, NoMove = 0x0002, NoZOrder = 0x0004;
+            const uint FrameChanged = 0x0020, NoActivate = 0x0010;
+
+            SetWindowPos(handle, IntPtr.Zero, 0, 0, 0, 0,
+                         NoSize | NoMove | NoZOrder | NoActivate | FrameChanged);
+        }
+    }
+
+    private void RestoreSavedPlacement()
+    {
+        if (_window.Bounds is { } bounds && IsOnSomeDisplay(bounds))
+        {
+            WindowStartupLocation = WindowStartupLocation.Manual;
+
+            Left = bounds.Left;
+            Top = bounds.Top;
+            Width = bounds.Width;
+            Height = bounds.Height;
+        }
+
+        if (!_window.Maximized) return;
+
+        WindowState = WindowState.Maximized;
+        _lastVisibleState = WindowState.Maximized;
+    }
+
+    private static bool IsOnSomeDisplay(Rect bounds)
+    {
+        var rect = new NativeRect
+        {
+            left = (int)bounds.Left,
+            top = (int)bounds.Top,
+            right = (int)(bounds.Left + bounds.Width),
+            bottom = (int)(bounds.Top + bounds.Height)
+        };
+
+        return MonitorFromRect(ref rect, MonitorDefaultToNull) != IntPtr.Zero;
+    }
+
+    private void RememberWindowState()
+    {
+        if (_isFullScreen || WindowState == WindowState.Minimized) return;
+
+        _lastVisibleState = WindowState;
+    }
+
+    private void RememberMonitor()
+    {
+        IntPtr hwnd = new WindowInteropHelper(this).Handle;
+        if (hwnd == IntPtr.Zero) return;
+
+        IntPtr monitor = MonitorFromWindow(hwnd, MonitorDefaultToNull);
+        if (monitor != IntPtr.Zero) _lastMonitor = monitor;
     }
 
     private IntPtr WndProc(IntPtr hwnd, int msg, IntPtr wParam, IntPtr lParam, ref bool handled)
@@ -355,11 +498,24 @@ public partial class MainWindow : Window
         const int WmGetMinMaxInfo = 0x0024;
         if (msg != WmGetMinMaxInfo) return IntPtr.Zero;
 
-        IntPtr monitor = MonitorFromWindow(hwnd, MonitorDefaultToNearest);
+        IntPtr monitor = MonitorFromWindow(hwnd, MonitorDefaultToNull);
+
+        if (monitor == IntPtr.Zero) monitor = _lastMonitor;
+        if (monitor == IntPtr.Zero) monitor = MonitorFromWindow(hwnd, MonitorDefaultToNearest);
         if (monitor == IntPtr.Zero) return IntPtr.Zero;
 
         var info = new NativeMonitorInfo { cbSize = Marshal.SizeOf<NativeMonitorInfo>() };
-        if (!GetMonitorInfo(monitor, ref info)) return IntPtr.Zero;
+        if (!GetMonitorInfo(monitor, ref info))
+        {
+            monitor = MonitorFromWindow(hwnd, MonitorDefaultToNearest);
+            if (monitor == IntPtr.Zero) return IntPtr.Zero;
+
+            info = new NativeMonitorInfo { cbSize = Marshal.SizeOf<NativeMonitorInfo>() };
+            if (!GetMonitorInfo(monitor, ref info)) return IntPtr.Zero;
+        }
+
+        if (MonitorFromWindow(hwnd, MonitorDefaultToNull) is { } onScreen && onScreen != IntPtr.Zero)
+            _lastMonitor = onScreen;
 
         NativeRect area = _isFullScreen ? info.rcMonitor : info.rcWork;
         var mmi = Marshal.PtrToStructure<NativeMinMaxInfo>(lParam);
@@ -390,6 +546,8 @@ public partial class MainWindow : Window
 
     private const int MonitorDefaultToNearest = 2;
 
+    private const int MonitorDefaultToNull = 0;
+
     [StructLayout(LayoutKind.Sequential)]
     private struct NativePoint { public int x, y; }
 
@@ -413,6 +571,19 @@ public partial class MainWindow : Window
 
     [DllImport("user32.dll")]
     private static extern IntPtr MonitorFromWindow(IntPtr hwnd, int flags);
+
+    [DllImport("user32.dll")]
+    private static extern IntPtr MonitorFromRect(ref NativeRect rect, int flags);
+
+    [DllImport("user32.dll")]
+    private static extern int GetWindowLong(IntPtr hwnd, int index);
+
+    [DllImport("user32.dll")]
+    private static extern int SetWindowLong(IntPtr hwnd, int index, int value);
+
+    [DllImport("user32.dll")]
+    private static extern bool SetWindowPos(IntPtr hwnd, IntPtr after,
+                                            int x, int y, int width, int height, uint flags);
 
     [DllImport("user32.dll")]
     private static extern bool GetMonitorInfo(IntPtr monitor, ref NativeMonitorInfo info);

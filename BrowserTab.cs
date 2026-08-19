@@ -64,9 +64,13 @@ public sealed class BrowserTab : INotifyPropertyChanged
     public event Action<BrowserTab, CoreWebView2NewWindowRequestedEventArgs>? NewWindowRequested;
     public event Action<BrowserTab, bool>? FullScreenChanged;
 
+    public event Action<BrowserTab, CoreWebView2ContextMenuRequestedEventArgs>? ContextMenuRequested;
+
     public HomePage? Home { get; set; }
 
     public VisitStore? Visits { get; set; }
+
+    public HistoryStore? History { get; set; }
 
     public async Task InitializeAsync(CoreWebView2Environment environment, string? navigateTo)
     {
@@ -84,18 +88,25 @@ public sealed class BrowserTab : INotifyPropertyChanged
 
         core.NavigationCompleted += (_, e) =>
         {
-            if (e.IsSuccess) Visits?.Record(core.Source, core.DocumentTitle, Favicon);
+            if (!e.IsSuccess) return;
+
+            Visits?.Record(core.Source, core.DocumentTitle, Favicon);
+            History?.Record(core.Source, core.DocumentTitle);
         };
 
         core.DocumentTitleChanged += (_, _) =>
         {
             Title = string.IsNullOrWhiteSpace(core.DocumentTitle) ? "New Tab" : core.DocumentTitle;
+
+            History?.Record(core.Source, core.DocumentTitle);
+
             Changed?.Invoke(this);
         };
         core.FaviconChanged += async (_, _) => await UpdateFaviconAsync(core);
         core.SourceChanged += (_, _) => Changed?.Invoke(this);
         core.HistoryChanged += (_, _) => Changed?.Invoke(this);
         core.NewWindowRequested += (_, e) => NewWindowRequested?.Invoke(this, e);
+        core.ContextMenuRequested += (_, e) => ContextMenuRequested?.Invoke(this, e);
         core.ContainsFullScreenElementChanged += (_, _) =>
             FullScreenChanged?.Invoke(this, core.ContainsFullScreenElement);
 
