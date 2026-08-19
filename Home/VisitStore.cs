@@ -25,7 +25,24 @@ public sealed class VisitStore
 
     private const int MaxSites = 60;
 
+    private static readonly string[] PassingThrough =
+    {
+        "duckduckgo.com", "bing.com", "search.yahoo.com", "ecosia.org",
+        "startpage.com", "search.brave.com", "yandex.com", "baidu.com",
+
+        "t.co", "l.facebook.com", "lm.facebook.com", "l.instagram.com",
+        "l.messenger.com", "out.reddit.com", "href.li", "away.vk.com"
+    };
+
+    private sealed class SavedState
+    {
+        public List<VisitedSite> Sites { get; set; } = new();
+
+        public List<string> Hidden { get; set; } = new();
+    }
+
     private readonly Dictionary<string, VisitedSite> _sites = new(StringComparer.OrdinalIgnoreCase);
+    private readonly HashSet<string> _hidden = new(StringComparer.OrdinalIgnoreCase);
 
     public void Load()
     {
@@ -33,17 +50,46 @@ public sealed class VisitStore
         {
             if (!File.Exists(FilePath)) return;
 
-            List<VisitedSite>? saved = JsonSerializer.Deserialize<List<VisitedSite>>(File.ReadAllText(FilePath), Json);
-            if (saved is null) return;
+            string text = File.ReadAllText(FilePath).TrimStart();
+            if (text.Length == 0) return;
 
-            foreach (VisitedSite site in saved)
+            if (text[0] == '[')
             {
-                if (!string.IsNullOrWhiteSpace(site.Host)) _sites[site.Host] = site;
+                Adopt(JsonSerializer.Deserialize<List<VisitedSite>>(text, Json), Array.Empty<string>());
+                return;
             }
+
+            SavedState? saved = JsonSerializer.Deserialize<SavedState>(text, Json);
+            if (saved is not null) Adopt(saved.Sites, saved.Hidden);
         }
         catch (Exception)
         {
         }
+    }
+
+    private void Adopt(List<VisitedSite>? sites, IEnumerable<string> hidden)
+    {
+        foreach (string host in hidden)
+        {
+            if (!string.IsNullOrWhiteSpace(host)) _hidden.Add(host);
+        }
+
+        bool dropped = false;
+
+        foreach (VisitedSite site in sites ?? new List<VisitedSite>())
+        {
+            if (string.IsNullOrWhiteSpace(site.Host)) continue;
+
+            if (Skip(site.Host))
+            {
+                dropped = true;
+                continue;
+            }
+
+            _sites[site.Host] = site;
+        }
+
+        if (dropped) Save();
     }
 
     public void Save()
@@ -52,13 +98,14 @@ public sealed class VisitStore
         {
             Directory.CreateDirectory(Path.GetDirectoryName(FilePath)!);
 
-            List<VisitedSite> top = _sites.Values
-                .OrderByDescending(s => s.Visits)
-                .Take(MaxSites)
-                .ToList();
+            var state = new SavedState
+            {
+                Sites = _sites.Values.OrderByDescending(s => s.Visits).Take(MaxSites).ToList(),
+                Hidden = _hidden.OrderBy(h => h).ToList()
+            };
 
             string temporary = FilePath + ".tmp";
-            File.WriteAllText(temporary, JsonSerializer.Serialize(top, Json));
+            File.WriteAllText(temporary, JsonSerializer.Serialize(state, Json));
             File.Move(temporary, FilePath, overwrite: true);
         }
         catch (Exception)
@@ -73,7 +120,7 @@ public sealed class VisitStore
         if (HomePage.IsHome(url)) return;
 
         string host = parsed.Host;
-        if (string.IsNullOrWhiteSpace(host)) return;
+        if (string.IsNullOrWhiteSpace(host) || Skip(host)) return;
 
         if (!_sites.TryGetValue(host, out VisitedSite? site))
         {
@@ -106,10 +153,30 @@ public sealed class VisitStore
         if (_sites.Remove(host)) Save();
     }
 
+    public void Hide(string host)
+    {
+        if (string.IsNullOrWhiteSpace(host)) return;
+
+        _hidden.Add(host);
+        _sites.Remove(host);
+        Save();
+    }
+
     public void Clear()
     {
         _sites.Clear();
         Save();
+    }
+
+    private bool Skip(string host) => _hidden.Contains(host) || IsPassingThrough(host);
+
+    private static bool IsPassingThrough(string host)
+    {
+        string bare = host.StartsWith("www.", StringComparison.OrdinalIgnoreCase) ? host[4..] : host;
+
+        if (bare.StartsWith("google.", StringComparison.OrdinalIgnoreCase)) return true;
+
+        return PassingThrough.Contains(bare, StringComparer.OrdinalIgnoreCase);
     }
 
     private static string? Encode(ImageSource? icon)

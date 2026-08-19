@@ -55,8 +55,24 @@ public sealed class HomePage
         {
             Forget(requested.Query);
 
+            if (Value(requested.Query, "via") == "script")
+            {
+                e.Response = core.Environment.CreateWebResourceResponse(
+                    null, 204, "No Content", "Cache-Control: no-store");
+                return;
+            }
+
             e.Response = core.Environment.CreateWebResourceResponse(
                 null, 302, "Found", $"Location: {Url}\r\nCache-Control: no-store");
+            return;
+        }
+
+        if (requested.AbsolutePath.Equals("/hide", StringComparison.OrdinalIgnoreCase))
+        {
+            if (Value(requested.Query, "host") is { } host) _visits.Hide(host);
+
+            e.Response = core.Environment.CreateWebResourceResponse(
+                null, 204, "No Content", "Cache-Control: no-store");
             return;
         }
 
@@ -101,10 +117,17 @@ public sealed class HomePage
             return;
         }
 
-        const string prefix = "host=";
-        if (value.StartsWith(prefix, StringComparison.OrdinalIgnoreCase))
+        const string host = "host=";
+        if (value.StartsWith(host, StringComparison.OrdinalIgnoreCase))
         {
-            _visits.Forget(Uri.UnescapeDataString(value[prefix.Length..]));
+            _visits.Forget(Uri.UnescapeDataString(value[host.Length..]));
+            return;
+        }
+
+        const string bookmark = "bookmark=";
+        if (value.StartsWith(bookmark, StringComparison.OrdinalIgnoreCase))
+        {
+            _bookmarks.Remove(Uri.UnescapeDataString(value[bookmark.Length..]));
         }
     }
 

@@ -1,7 +1,9 @@
 using System.Collections.ObjectModel;
+using System.Collections.Specialized;
 using System.Diagnostics;
 using System.Runtime.InteropServices;
 using System.Windows;
+using System.Windows.Controls;
 using System.Windows.Input;
 using System.Windows.Interop;
 using System.Windows.Media;
@@ -17,12 +19,16 @@ namespace Lucent;
 public partial class MainWindow : Window
 {
     private readonly ObservableCollection<BrowserTab> _tabs = new();
-    private readonly BookmarkStore _bookmarks = new();
-    private readonly VisitStore _visits = new();
-    private readonly WindowStateStore _window = new();
-    private readonly HistoryStore _history = new();
-    private readonly TabSession _session = new();
-    private HomePage? _home;
+    private readonly Browser _browser;
+
+    private BookmarkStore _bookmarks => _browser.Bookmarks;
+    private VisitStore _visits => _browser.Visits;
+    private WindowStateStore _window => _browser.WindowState;
+    private HistoryStore _history => _browser.History;
+    private TabSession _session => _browser.Session;
+    private HomePage _home => _browser.Home;
+
+    private readonly bool _isFirst;
 
     private WindowState _lastVisibleState = WindowState.Normal;
 
@@ -42,8 +48,11 @@ public partial class MainWindow : Window
     public ICommand BookmarkCommand { get; }
     public ICommand ToggleBookmarkBarCommand { get; }
 
-    public MainWindow()
+    public MainWindow(Browser browser, bool isFirst = true)
     {
+        _browser = browser;
+        _isFirst = isFirst;
+
         InitializeComponent();
 
         NewTabCommand = new RelayCommand(() => _ = OpenTabAsync(Url.Home, activate: true));
@@ -58,54 +67,60 @@ public partial class MainWindow : Window
             ShowBookmarkBar();
         });
 
-        _bookmarks.Load();
         BookmarkBar.ItemsSource = _bookmarks.Items;
         ShowBookmarkBar();
 
-        _visits.Load();
-        _history.Load();
-        _session.Load();
-        _home = new HomePage(_bookmarks, _visits, _history);
-
-        _window.Load();
+        _bookmarks.Items.CollectionChanged += OnBookmarksChanged;
 
         TabStrip.ItemsSource = _tabs;
         Loaded += OnLoaded;
-        StateChanged += (_, _) => { UpdateContentInset(); UpdateResizeBorder(); RememberWindowState(); };
+        StateChanged += (_, _) =>
+        {
+            UpdateContentInset();
+            UpdateMaximizedInset();
+            UpdateResizeBorder();
+            ApplyRoundedCorners();
+            RememberWindowState();
+        };
         LocationChanged += (_, _) => RememberMonitor();
         Closing += (_, _) =>
         {
+            SaveSession(closing: this);
+
             _window.Maximized = _lastVisibleState == WindowState.Maximized;
 
             if (RestoreBounds.Width > 0 && RestoreBounds.Height > 0)
                 _window.Bounds = RestoreBounds;
 
-            _window.Save();
-
-            SaveSession();
-
-            _history.Flush();
+            if (_isFirst) _window.Save();
         };
-        Closed += (_, _) => { foreach (BrowserTab tab in _tabs) tab.Dispose(); };
+        Closed += (_, _) =>
+        {
+            _bookmarks.Items.CollectionChanged -= OnBookmarksChanged;
+
+            foreach (BrowserTab tab in _tabs) tab.Dispose();
+        };
+    }
+
+    private void OnBookmarksChanged(object? sender, NotifyCollectionChangedEventArgs e)
+    {
+        ShowBookmarkBar();
+        UpdateStar();
     }
 
     private async void OnLoaded(object sender, RoutedEventArgs e)
     {
         ApplyRoundedCorners();
         UpdateContentInset();
+        UpdateMaximizedInset();
 
         UpdateResizeBorder();
 
         VersionLabel.Text = $"v{Release.CurrentDisplay}";
 
-        var options = new CoreWebView2EnvironmentOptions
-        {
-            AdditionalBrowserArguments = "--autoplay-policy=no-user-gesture-required"
-        };
-
         try
         {
-            _environment = await CoreWebView2Environment.CreateAsync(null, App.UserDataFolder, options);
+            _environment = await _browser.EnvironmentAsync();
         }
         catch (Exception ex)
         {
@@ -113,9 +128,17 @@ public partial class MainWindow : Window
             return;
         }
 
-        await RestoreSessionAsync();
+        if (_isFirst && !_browser.SessionRestored)
+        {
+            _browser.SessionRestored = true;
+            await RestoreSessionAsync();
+        }
 
-        _ = CheckForUpdateAsync();
+        if (!_browser.UpdateChecked)
+        {
+            _browser.UpdateChecked = true;
+            _ = CheckForUpdateAsync();
+        }
     }
 
     private void ShowStartupFailure(Exception ex)
@@ -190,22 +213,53 @@ public partial class MainWindow : Window
 
     private async Task RestoreSessionAsync()
     {
-        if (_session.Urls.Count == 0)
+        IReadOnlyList<SessionWindow> windows = _session.Windows;
+
+        if (windows.Count == 0)
         {
             await OpenTabAsync(Url.Home, activate: true);
             return;
         }
 
-        for (int i = 0; i < _session.Urls.Count; i++)
-            await OpenTabAsync(_session.Urls[i], activate: false);
+        await FillAsync(windows[0]);
 
-        SelectTab(_tabs[Math.Clamp(_session.Active, 0, _tabs.Count - 1)]);
+        for (int i = 1; i < windows.Count; i++)
+        {
+            var window = new MainWindow(_browser, isFirst: false);
+            window.Show();
+            await window.FillAsync(windows[i]);
+        }
+
+        Activate();
     }
 
-    private void SaveSession()
+    private async Task FillAsync(SessionWindow saved)
     {
-        _session.Save(_tabs.Select(t => string.IsNullOrWhiteSpace(t.Source) ? Url.Home : t.Source),
-                      _active is null ? 0 : Math.Max(0, _tabs.IndexOf(_active)));
+        foreach (string url in saved.Urls)
+            await OpenTabAsync(url, activate: false);
+
+        if (_tabs.Count > 0)
+            SelectTab(_tabs[Math.Clamp(saved.Active, 0, _tabs.Count - 1)]);
+    }
+
+    private void SaveSession(MainWindow? closing = null)
+    {
+        var windows = new List<SessionWindow>();
+
+        foreach (MainWindow window in Application.Current.Windows.OfType<MainWindow>())
+        {
+            if (ReferenceEquals(window, closing)) continue;
+
+            windows.Add(new SessionWindow
+            {
+                Urls = window._tabs
+                    .Select(t => string.IsNullOrWhiteSpace(t.Source) ? Url.Home : t.Source)
+                    .ToList(),
+                Active = window._active is null ? 0 : Math.Max(0, window._tabs.IndexOf(window._active))
+            });
+        }
+
+        _session.Save(windows);
     }
 
     private async Task<BrowserTab> OpenTabAsync(string? url, bool activate)
@@ -214,11 +268,7 @@ public partial class MainWindow : Window
         _tabs.Add(tab);
         ContentHost.Children.Add(tab.View);
 
-        tab.Changed += OnTabChanged;
-        tab.FullScreenChanged += OnFullScreenChanged;
-        tab.NewWindowRequested += OnNewWindowRequested;
-        tab.ContextMenuRequested += OnContextMenuRequested;
-        tab.Blocker.BlockedCountChanged += _ => Dispatcher.BeginInvoke(UpdateChrome);
+        Subscribe(tab);
 
         await tab.InitializeAsync(_environment!, url);
 
@@ -372,6 +422,20 @@ public partial class MainWindow : Window
         UpdateStar();
     }
 
+    private void UpdateMaximizedInset()
+    {
+        if (WindowState != System.Windows.WindowState.Maximized)
+        {
+            RootGrid.Margin = new Thickness(0);
+            return;
+        }
+
+        int x = GetSystemMetrics(SystemMetricSizeFrameWidth) + GetSystemMetrics(SystemMetricPaddedBorder);
+        int y = GetSystemMetrics(SystemMetricSizeFrameHeight) + GetSystemMetrics(SystemMetricPaddedBorder);
+
+        RootGrid.Margin = new Thickness(x, y, x, y);
+    }
+
     private void UpdateContentInset()
     {
         bool edgeToEdge = _isFullScreen || WindowState == WindowState.Maximized;
@@ -448,6 +512,8 @@ public partial class MainWindow : Window
 
     private void RestoreSavedPlacement()
     {
+        if (!_isFirst) return;
+
         if (_window.Bounds is { } bounds && IsOnSomeDisplay(bounds))
         {
             WindowStartupLocation = WindowStartupLocation.Manual;
@@ -535,12 +601,16 @@ public partial class MainWindow : Window
     private void ApplyRoundedCorners()
     {
         const int DwmwaWindowCornerPreference = 33;
+        const int CornerPreferenceDoNotRound = 1;
         const int CornerPreferenceRound = 2;
 
         IntPtr hwnd = new WindowInteropHelper(this).Handle;
         if (hwnd == IntPtr.Zero) return;
 
-        int preference = CornerPreferenceRound;
+        int preference = WindowState == WindowState.Maximized || _isFullScreen
+            ? CornerPreferenceDoNotRound
+            : CornerPreferenceRound;
+
         DwmSetWindowAttribute(hwnd, DwmwaWindowCornerPreference, ref preference, sizeof(int));
     }
 
@@ -571,6 +641,13 @@ public partial class MainWindow : Window
 
     [DllImport("user32.dll")]
     private static extern IntPtr MonitorFromWindow(IntPtr hwnd, int flags);
+
+    private const int SystemMetricSizeFrameWidth = 32;
+    private const int SystemMetricSizeFrameHeight = 33;
+    private const int SystemMetricPaddedBorder = 92;
+
+    [DllImport("user32.dll")]
+    private static extern int GetSystemMetrics(int index);
 
     [DllImport("user32.dll")]
     private static extern IntPtr MonitorFromRect(ref NativeRect rect, int flags);
@@ -651,11 +728,147 @@ public partial class MainWindow : Window
             return;
         }
 
+        BrowserTab dragged = _dragTab;
+        bool detachable = _tabs.Count > 1;
+
         EndTabDrag(sender);
+
+        if (detachable)
+        {
+            DetachTab(dragged, here);
+            return;
+        }
 
         RestoreBeforeDrag(here);
 
+        DragAndMaybeMerge(dragged);
+    }
+
+    private void DetachTab(BrowserTab tab, Point inWindow)
+    {
+        int index = _tabs.IndexOf(tab);
+        if (index < 0) return;
+
+        Unsubscribe(tab);
+
+        _tabs.Remove(tab);
+        ContentHost.Children.Remove(tab.View);
+
+        if (ReferenceEquals(_active, tab) && _tabs.Count > 0)
+            SelectTab(_tabs[Math.Min(index, _tabs.Count - 1)]);
+
+        var window = new MainWindow(_browser, isFirst: false);
+
+        GetCursorPos(out NativePoint cursor);
+        window.WindowStartupLocation = WindowStartupLocation.Manual;
+        window.Left = cursor.x - inWindow.X;
+        window.Top = cursor.y - inWindow.Y;
+
+        window.Show();
+        window.Adopt(tab);
+
+        SaveSession();
+
+        window.DragAndMaybeMerge(tab);
+    }
+
+    public void DragAndMaybeMerge(BrowserTab tab)
+    {
         try { DragMove(); } catch (InvalidOperationException) { }
+
+        if (StripUnderCursor(except: this) is not { } target) return;
+
+        Unsubscribe(tab);
+
+        _tabs.Remove(tab);
+        ContentHost.Children.Remove(tab.View);
+
+        target.Adopt(tab, target.DropIndex());
+        target.Activate();
+
+        if (_tabs.Count == 0) Close();
+        else SaveSession();
+    }
+
+    private static MainWindow? StripUnderCursor(MainWindow except)
+    {
+        GetCursorPos(out NativePoint cursor);
+
+        foreach (MainWindow window in Application.Current.Windows.OfType<MainWindow>())
+        {
+            if (ReferenceEquals(window, except)) continue;
+            if (!window.IsVisible || window.WindowState == WindowState.Minimized) continue;
+
+            try
+            {
+                Point topLeft = window.TabStripRow.PointToScreen(new Point(0, 0));
+                Point bottomRight = window.TabStripRow.PointToScreen(
+                    new Point(window.TabStripRow.ActualWidth, window.TabStripRow.ActualHeight));
+
+                if (cursor.x >= topLeft.X && cursor.x <= bottomRight.X &&
+                    cursor.y >= topLeft.Y && cursor.y <= bottomRight.Y)
+                {
+                    return window;
+                }
+            }
+            catch (InvalidOperationException)
+            {
+            }
+        }
+
+        return null;
+    }
+
+    private int DropIndex()
+    {
+        GetCursorPos(out NativePoint cursor);
+
+        for (int i = 0; i < _tabs.Count; i++)
+        {
+            if (TabStrip.ItemContainerGenerator.ContainerFromIndex(i) is not FrameworkElement slot) continue;
+
+            try
+            {
+                Point topLeft = slot.PointToScreen(new Point(0, 0));
+
+                if (cursor.x < topLeft.X + slot.ActualWidth / 2) return i;
+            }
+            catch (InvalidOperationException)
+            {
+            }
+        }
+
+        return _tabs.Count;
+    }
+
+    private void Subscribe(BrowserTab tab)
+    {
+        tab.Changed += OnTabChanged;
+        tab.FullScreenChanged += OnFullScreenChanged;
+        tab.NewWindowRequested += OnNewWindowRequested;
+        tab.ContextMenuRequested += OnContextMenuRequested;
+        tab.Blocker.BlockedCountChanged += OnBlockedCountChanged;
+    }
+
+    private void Unsubscribe(BrowserTab tab)
+    {
+        tab.Changed -= OnTabChanged;
+        tab.FullScreenChanged -= OnFullScreenChanged;
+        tab.NewWindowRequested -= OnNewWindowRequested;
+        tab.ContextMenuRequested -= OnContextMenuRequested;
+        tab.Blocker.BlockedCountChanged -= OnBlockedCountChanged;
+    }
+
+    private void OnBlockedCountChanged(int count) => Dispatcher.BeginInvoke(UpdateChrome);
+
+    private void Adopt(BrowserTab tab, int index = -1)
+    {
+        _tabs.Insert(index < 0 ? _tabs.Count : Math.Clamp(index, 0, _tabs.Count), tab);
+        ContentHost.Children.Add(tab.View);
+
+        Subscribe(tab);
+        SelectTab(tab);
+        SaveSession();
     }
 
     private void Tab_MouseUp(object sender, MouseButtonEventArgs e) => EndTabDrag(sender);
@@ -732,6 +945,69 @@ public partial class MainWindow : Window
     private void Forward_Click(object sender, RoutedEventArgs e) => _active?.View.CoreWebView2?.GoForward();
 
     private void Reload_Click(object sender, RoutedEventArgs e) => _active?.View.CoreWebView2?.Reload();
+
+    private bool _completing;
+
+    private bool _deleting;
+
+    private void AddressBar_PreviewKeyDown(object sender, KeyEventArgs e) =>
+        _deleting = e.Key is Key.Back or Key.Delete;
+
+    private void AddressBar_TextChanged(object sender, TextChangedEventArgs e)
+    {
+        if (_completing || _deleting || !AddressBar.IsKeyboardFocused) return;
+
+        string typed = AddressBar.Text;
+
+        if (typed.Length == 0 || AddressBar.CaretIndex != typed.Length) return;
+
+        if (Suggest(typed) is not { } match) return;
+
+        _completing = true;
+        AddressBar.Text = match;
+        AddressBar.Select(typed.Length, match.Length - typed.Length);
+        _completing = false;
+    }
+
+    private string? Suggest(string typed)
+    {
+        string prefix = typed.TrimStart();
+
+        if (prefix.Length == 0 || prefix.Contains(' ') || prefix.Contains('/')) return null;
+
+        foreach (string host in KnownHosts())
+        {
+            if (host.Length > prefix.Length &&
+                host.StartsWith(prefix, StringComparison.OrdinalIgnoreCase))
+            {
+                return host;
+            }
+        }
+
+        return null;
+    }
+
+    private IEnumerable<string> KnownHosts()
+    {
+        var seen = new HashSet<string>(StringComparer.OrdinalIgnoreCase);
+
+        foreach (Bookmark bookmark in _bookmarks.Items)
+        {
+            if (Bare(bookmark.Url) is { } host && seen.Add(host)) yield return host;
+        }
+
+        foreach (VisitedSite site in _visits.Top(int.MaxValue, Array.Empty<string>()))
+        {
+            string host = Strip(site.Host);
+            if (seen.Add(host)) yield return host;
+        }
+    }
+
+    private static string? Bare(string url) =>
+        Uri.TryCreate(url, UriKind.Absolute, out Uri? parsed) ? Strip(parsed.Host) : null;
+
+    private static string Strip(string host) =>
+        host.StartsWith("www.", StringComparison.OrdinalIgnoreCase) ? host[4..] : host;
 
     private void AddressBar_KeyDown(object sender, KeyEventArgs e)
     {

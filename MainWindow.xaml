@@ -26,7 +26,7 @@
     <KeyBinding Key="B" Modifiers="Ctrl+Shift" Command="{Binding ToggleBookmarkBarCommand, RelativeSource={RelativeSource AncestorType=Window}}"/>
   </Window.InputBindings>
 
-  <Grid>
+  <Grid x:Name="RootGrid">
     <Grid.RowDefinitions>
       <RowDefinition Height="Auto"/>
       <RowDefinition Height="Auto"/>
@@ -194,7 +194,9 @@
           </Grid.ColumnDefinitions>
 
           <TextBox x:Name="AddressBar" Style="{StaticResource AddressBox}"
-                   KeyDown="AddressBar_KeyDown" GotKeyboardFocus="AddressBar_GotFocus"/>
+                   KeyDown="AddressBar_KeyDown" GotKeyboardFocus="AddressBar_GotFocus"
+                   PreviewKeyDown="AddressBar_PreviewKeyDown"
+                   TextChanged="AddressBar_TextChanged"/>
 
           <Button x:Name="StarButton" Grid.Column="1" Style="{StaticResource StarButton}"
                   Margin="0,0,3,0" Click="Star_Click"/>

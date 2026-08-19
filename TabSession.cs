@@ -3,6 +3,12 @@ using System.Text.Json;
 
 namespace Lucent;
 
+public sealed class SessionWindow
+{
+    public List<string> Urls { get; set; } = new();
+    public int Active { get; set; }
+}
+
 public sealed class TabSession
 {
     private static readonly string FilePath = Path.Combine(
@@ -13,14 +19,17 @@ public sealed class TabSession
 
     private const int MaxTabs = 100;
 
+    private const int MaxWindows = 20;
+
     private sealed class SavedSession
     {
-        public List<string> Urls { get; set; } = new();
+        public List<SessionWindow> Windows { get; set; } = new();
+
+        public List<string>? Urls { get; set; }
         public int Active { get; set; }
     }
 
-    public IReadOnlyList<string> Urls { get; private set; } = Array.Empty<string>();
-    public int Active { get; private set; }
+    public IReadOnlyList<SessionWindow> Windows { get; private set; } = Array.Empty<SessionWindow>();
 
     public void Load()
     {
@@ -31,20 +40,27 @@ public sealed class TabSession
             SavedSession? saved = JsonSerializer.Deserialize<SavedSession>(File.ReadAllText(FilePath), Json);
             if (saved is null) return;
 
-            List<string> urls = saved.Urls
-                .Where(u => !string.IsNullOrWhiteSpace(u))
-                .Take(MaxTabs)
-                .ToList();
+            List<SessionWindow> windows = saved.Windows;
 
-            Urls = urls;
-            Active = Math.Clamp(saved.Active, 0, Math.Max(0, urls.Count - 1));
+            if (windows.Count == 0 && saved.Urls is { Count: > 0 })
+                windows = new List<SessionWindow> { new() { Urls = saved.Urls, Active = saved.Active } };
+
+            Windows = windows
+                .Select(w => new SessionWindow
+                {
+                    Urls = w.Urls.Where(u => !string.IsNullOrWhiteSpace(u)).Take(MaxTabs).ToList(),
+                    Active = w.Active
+                })
+                .Where(w => w.Urls.Count > 0)
+                .Take(MaxWindows)
+                .ToList();
         }
         catch (Exception)
         {
         }
     }
 
-    public void Save(IEnumerable<string> urls, int active)
+    public void Save(IEnumerable<SessionWindow> windows)
     {
         try
         {
@@ -52,8 +68,15 @@ public sealed class TabSession
 
             var state = new SavedSession
             {
-                Urls = urls.Where(u => !string.IsNullOrWhiteSpace(u)).Take(MaxTabs).ToList(),
-                Active = active
+                Windows = windows
+                    .Select(w => new SessionWindow
+                    {
+                        Urls = w.Urls.Where(u => !string.IsNullOrWhiteSpace(u)).Take(MaxTabs).ToList(),
+                        Active = w.Active
+                    })
+                    .Where(w => w.Urls.Count > 0)
+                    .Take(MaxWindows)
+                    .ToList()
             };
 
             string temporary = FilePath + ".tmp";

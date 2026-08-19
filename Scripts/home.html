@@ -172,16 +172,64 @@
     white-space: nowrap; overflow: hidden; text-overflow: ellipsis;
   }
 
-  /* Only offered on tiles the browser inferred. A bookmark is removed with its own
-     star, and quietly having two ways to delete one would be worse than none. */
+  /* The cross is two bars rather than a character or an icon.
+     A '×' is positioned by the font, which aligns it to the math axis above the
+     middle of the em box, so centring its line box still leaves the mark high. An
+     SVG fixed that and left it half a pixel out, because a 9px mark centred in a
+     20px circle has 11px to share between two sides.
+     Two bars pinned to the centre and rotated about it have neither problem: the
+     centre of each bar IS the centre of the button, whatever either of them
+     measures, so it cannot drift by a fraction of a pixel or by a font. */
   .forget {
     position: absolute; top: 5px; right: 5px;
     width: 20px; height: 20px; border-radius: 50%;
-    display: none; align-items: center; justify-content: center;
+    display: none;
     background: #3A3A45; color: var(--dim);
-    font-size: 13px; line-height: 1; text-decoration: none;
+    border: 0; padding: 0; cursor: pointer;
   }
-  .tile:hover .forget { display: flex; }
+  .forget:hover { background: #4A4A57; color: var(--fg); }
+
+  /* Three dots from one, using its own shadows for the outer two. The dot is pinned
+     to the centre and the shadows are placed either side of it, so the group is
+     centred by construction rather than by a measurement that has to come out even.
+     The same reasoning as the cross this replaced, which took two attempts to centre
+     as a character and then as an icon. */
+  .forget::before {
+    content: '';
+    position: absolute; top: 50%; left: 50%;
+    width: 2.5px; height: 2.5px; border-radius: 50%;
+    background: currentColor;
+    transform: translate(-50%, -50%);
+    box-shadow: -4.5px 0 0 currentColor, 4.5px 0 0 currentColor;
+  }
+
+  /* The tile's own menu. Same surface as the chrome's context menus, because it is
+     the same kind of thing and appears a few pixels from them. */
+  #tilemenu {
+    position: fixed; z-index: 5; display: none;
+    min-width: 178px; padding: 5px;
+    background: #1F1F26; border: 1px solid #3A3A45; border-radius: 9px;
+    box-shadow: 0 4px 18px rgba(0, 0, 0, .5);
+  }
+  #tilemenu.open { display: block; }
+
+  #tilemenu button {
+    position: static;
+    display: block; width: 100%; height: auto;
+    padding: 8px 10px; border: 0; border-radius: 6px;
+    background: none; color: var(--fg);
+    font-family: inherit; font-size: 12px; text-align: left;
+    cursor: pointer;
+  }
+  #tilemenu button:hover { background: #33333C; color: var(--fg); }
+  .tile:hover .forget { display: block; }
+
+  /* Written after the hover rule on purpose: the two match with the same weight, so
+     the later one is what a tile on its way out actually gets. */
+  .tile.going {
+    opacity: 0; transform: scale(.86); pointer-events: none;
+    transition: opacity .16s ease-out, transform .16s ease-out;
+  }
   .forget:hover { background: #4A4A57; color: var(--fg); }
 
   .empty { color: var(--dim); font-size: 13px; margin-left: 4px; }
@@ -307,6 +355,8 @@
   <footer><a id="clear" href="/forget?all=1">Clear Most Visited</a></footer>
 </main>
 
+<div id="tilemenu"></div>
+
 <aside id="drawer">
   <div id="handle" role="button" tabindex="0" aria-label="History"><span>&#10094;</span></div>
 
@@ -370,7 +420,7 @@ function letter(site) {
   return source.replace(/^www\./i, '').charAt(0).toUpperCase();
 }
 
-function tile(site, removable) {
+function tile(site, kind) {
   var a = document.createElement('a');
   a.className = 'tile';
   a.href = site.url;
@@ -395,20 +445,28 @@ function tile(site, removable) {
   a.appendChild(icon);
   a.appendChild(name);
 
-  if (removable) {
-    var forget = document.createElement('a');
-    forget.className = 'forget';
-    forget.href = '/forget?host=' + encodeURIComponent(site.host);
-    forget.textContent = '×';
-    forget.title = 'Remove';
-    a.appendChild(forget);
-  }
+  // Carried on the tile rather than closed over, because the menu is one element
+  // shared by every tile and has to be told which one opened it.
+  a.dataset.kind = kind;
+  a.dataset.host = site.host;
+  a.dataset.url = site.url;
+
+  var more = document.createElement('button');
+  more.type = 'button';
+  more.className = 'forget';
+  more.title = 'Options';
+  a.appendChild(more);
 
   return a;
 }
 
-function row(heading, sites, removable, emptyText) {
+function row(heading, sites, kind, emptyText) {
   var section = document.createElement('section');
+
+  // Kept on the section because removing the last tile has to put this row back the
+  // way an empty one is built, and by then the values that built it are long gone.
+  section.dataset.kind = kind;
+  section.dataset.empty = emptyText;
 
   var h2 = document.createElement('h2');
   h2.textContent = heading;
@@ -424,19 +482,233 @@ function row(heading, sites, removable, emptyText) {
 
   var grid = document.createElement('div');
   grid.className = 'tiles';
-  sites.forEach(function (s) { grid.appendChild(tile(s, removable)); });
+  sites.forEach(function (s) { grid.appendChild(tile(s, kind)); });
   section.appendChild(grid);
 
   return section;
 }
 
+var still = window.matchMedia('(prefers-reduced-motion: reduce)');
+
+// --- Removing a tile ------------------------------------------------------
+// Removing one used to navigate to /forget and come back as a freshly served page,
+// which threw the whole start page away to delete a single tile: the mark re-animated,
+// every row re-appeared, and anything open was closed. The row is edited in place
+// instead.
+//
+// Layout does not animate. A tile leaving makes the ones after it occupy new slots
+// immediately, and the only way to show that as movement is to measure where they
+// were, put them back there with a transform, and then release them -- undoing the
+// change so the browser can be watched making it.
+function slide(grid, going) {
+  var others = Array.prototype.filter.call(grid.children, function (el) {
+    return el !== going;
+  });
+
+  var before = others.map(function (el) { return el.getBoundingClientRect(); });
+
+  grid.removeChild(going);
+
+  if (still.matches) return;
+
+  var moved = [];
+
+  others.forEach(function (el, i) {
+    var now = el.getBoundingClientRect();
+    var dx = before[i].left - now.left;
+    var dy = before[i].top - now.top;
+    if (!dx && !dy) return;
+
+    el.style.transition = 'none';
+    el.style.transform = 'translate(' + dx + 'px, ' + dy + 'px)';
+    moved.push(el);
+  });
+
+  if (!moved.length) return;
+
+  // Read something back so the browser commits to the starting point. Without this
+  // both transforms land in the same frame and there is nothing to animate between.
+  void grid.offsetWidth;
+
+  moved.forEach(function (el) {
+    el.style.transition = 'transform .24s cubic-bezier(.3,.85,.3,1)';
+    el.style.transform = '';
+  });
+
+  // Handed back to the stylesheet once it has arrived, or the inline transition would
+  // outlive this and slow the hover down.
+  setTimeout(function () {
+    moved.forEach(function (el) { el.style.transition = ''; });
+  }, 260);
+}
+
+function emptyOut(section) {
+  var grid = section.querySelector('.tiles');
+  if (grid) section.removeChild(grid);
+
+  var note = document.createElement('div');
+  note.className = 'empty';
+  note.textContent = section.dataset.empty || '';
+  section.appendChild(note);
+}
+
+function drop(tileEl, path) {
+  var grid = tileEl.parentNode;
+  var section = grid.parentNode;
+
+  // Stops a second click landing on a tile that is already leaving.
+  tileEl.classList.add('going');
+
+  fetch(path, { cache: 'no-store' }).then(function () {
+    window.setTimeout(function () {
+      slide(grid, tileEl);
+
+      if (!grid.children.length) emptyOut(section);
+      if (section.dataset.kind === 'site' && !grid.children.length) hideClear();
+    }, still.matches ? 0 : 170);
+  });
+}
+
+// --- The tile menu --------------------------------------------------------
+// One menu, moved to whichever tile asked for it. A menu per tile would be a hundred
+// elements built to show at most one of them.
+var tilemenu = document.getElementById('tilemenu');
+var menuFor = null;
+
+function closeMenu() {
+  tilemenu.classList.remove('open');
+  menuFor = null;
+}
+
+function item(label, run) {
+  var button = document.createElement('button');
+  button.type = 'button';
+  button.textContent = label;
+  button.addEventListener('click', function () {
+    closeMenu();
+    run();
+  });
+  return button;
+}
+
+function openMenu(tileEl, at) {
+  tilemenu.textContent = '';
+  menuFor = tileEl;
+
+  var host = tileEl.dataset.host;
+  var url = tileEl.dataset.url;
+
+  if (tileEl.dataset.kind === 'bookmark') {
+    tilemenu.appendChild(item('Remove Bookmark', function () {
+      drop(tileEl, '/forget?bookmark=' + encodeURIComponent(url) + '&via=script');
+    }));
+  } else {
+    tilemenu.appendChild(item('Remove', function () {
+      drop(tileEl, '/forget?host=' + encodeURIComponent(host) + '&via=script');
+    }));
+
+    // Worth saying plainly which of the two this is. Remove lasts until the site is
+    // visited again; this is the one that means it.
+    tilemenu.appendChild(item('Never Show This Site', function () {
+      drop(tileEl, '/hide?host=' + encodeURIComponent(host));
+    }));
+  }
+
+  // Shown before being measured, since a hidden element has no size to place by.
+  tilemenu.classList.add('open');
+
+  var size = tilemenu.getBoundingClientRect();
+
+  // Down and to the right of the pointer, the way every other menu in this browser
+  // opens. Anchoring it to the button instead made it hang off to the left, which
+  // read as a different kind of thing to the menus a page and a bookmark already
+  // have.
+  var left = at.x;
+  var top = at.y;
+
+  // Flipped back over the pointer rather than run off the edge, so a tile at the
+  // right or the bottom of the grid still gets a whole menu.
+  if (left + size.width > window.innerWidth - 8) left = at.x - size.width;
+  if (top + size.height > window.innerHeight - 8) top = at.y - size.height;
+
+  tilemenu.style.left = Math.max(8, left) + 'px';
+  tilemenu.style.top = Math.max(8, top) + 'px';
+}
+
 var rows = document.getElementById('rows');
-rows.appendChild(row('Bookmarks', DATA.bookmarks, false,
+
+// Delegated, because the tiles are built and removed as the page is used and a
+// listener on each one would have to be attached and forgotten along with it.
+rows.addEventListener('click', function (e) {
+  var button = e.target.closest ? e.target.closest('.forget') : null;
+  if (!button) return;
+
+  // The tile underneath is a link to the site. Without this, opening its menu would
+  // navigate to the very thing the menu is about.
+  e.preventDefault();
+  e.stopPropagation();
+
+  var tileEl = button.parentNode;
+
+  if (menuFor === tileEl) {
+    closeMenu();
+    return;
+  }
+
+  // A click reports where the pointer was; a keyboard press reports nothing, and
+  // detail is how the two are told apart. Falling back to the button's own corner
+  // keeps the menu reachable without a mouse.
+  var box = button.getBoundingClientRect();
+  var at = e.detail === 0
+    ? { x: box.left, y: box.bottom + 4 }
+    : { x: e.clientX, y: e.clientY };
+
+  openMenu(tileEl, at);
+});
+
+document.addEventListener('click', function (e) {
+  if (!menuFor) return;
+  if (tilemenu.contains(e.target)) return;
+  if (e.target.closest && e.target.closest('.forget')) return;
+
+  closeMenu();
+});
+
+document.addEventListener('keydown', function (e) {
+  if (e.key === 'Escape' && menuFor) closeMenu();
+});
+
+window.addEventListener('resize', closeMenu);
+rows.appendChild(row('Bookmarks', DATA.bookmarks, 'bookmark',
                      'Star a page to pin it here.'));
-rows.appendChild(row('Most Visited', DATA.visited, true,
+rows.appendChild(row('Most Visited', DATA.visited, 'site',
                      'Sites you visit will appear here.'));
 
-if (!DATA.visited.length) document.getElementById('clear').style.display = 'none';
+function hideClear() { document.getElementById('clear').style.display = 'none'; }
+
+if (!DATA.visited.length) hideClear();
+
+// Clearing the row goes the same way as removing one tile, for the same reason: a
+// page that reloads to empty a list it has already emptied is doing the work twice
+// and showing the seam.
+document.getElementById('clear').addEventListener('click', function (e) {
+  e.preventDefault();
+
+  fetch('/forget?all=1&via=script', { cache: 'no-store' }).then(function () {
+    var section = rows.querySelector('section[data-kind="site"]');
+    if (!section) return;
+
+    var grid = section.querySelector('.tiles');
+    if (grid) {
+      Array.prototype.forEach.call(grid.children, function (el) { el.classList.add('going'); });
+    }
+
+    window.setTimeout(function () {
+      emptyOut(section);
+      hideClear();
+    }, still.matches ? 0 : 170);
+  });
+});
 
 // --- History drawer -------------------------------------------------------
 // Asked for when the drawer is first opened rather than handed over with the page:

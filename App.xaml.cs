@@ -11,6 +11,8 @@ public partial class App : Application
         Environment.GetFolderPath(Environment.SpecialFolder.LocalApplicationData),
         "Lucent", "WebView2");
 
+    public static Browser Browser { get; private set; } = null!;
+
     protected override void OnStartup(StartupEventArgs e)
     {
         Directory.CreateDirectory(UserDataFolder);
@@ -20,6 +22,15 @@ public partial class App : Application
         DispatcherUnhandledException += OnUnhandledException;
 
         base.OnStartup(e);
+
+        Browser = new Browser();
+        new MainWindow(Browser).Show();
+    }
+
+    protected override void OnExit(ExitEventArgs e)
+    {
+        Browser?.History.Flush();
+        base.OnExit(e);
     }
 
     private void OnUnhandledException(object sender, DispatcherUnhandledExceptionEventArgs e)
