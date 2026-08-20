@@ -239,6 +239,12 @@
   footer a { color: var(--dim); font-size: 11px; text-decoration: none; }
   footer a:hover { color: var(--fg); }
 
+  /* Separated by a dot drawn between them rather than by a character in the markup,
+     so that either link disappearing does not leave a divider with one side. */
+  footer a + a::before {
+    content: '\00B7'; margin: 0 9px; color: #3A3A44;
+  }
+
   /* --- History drawer ---------------------------------------------------
      Off-canvas rather than hidden: it is translated past the right edge and slid
      back, so opening and closing are the same movement in either direction and the
@@ -345,14 +351,21 @@
   </div>
 
   <form id="go" autocomplete="off">
-    <input id="q" type="text" placeholder="Search Or Enter Address" autofocus
+    <!-- Deliberately not autofocused. A new tab puts the caret in the address bar
+         instead, which is the box that completes from where you have been and the box
+         that is there on every page rather than only on this one. Two boxes both
+         asking for the keyboard is one of them winning at random. -->
+    <input id="q" type="text" placeholder="Search Or Enter Address"
            spellcheck="false" aria-label="Search or enter address">
     <button type="submit" aria-label="Go">&#10132;</button>
   </form>
 
   <div id="rows"></div>
 
-  <footer><a id="clear" href="/forget?all=1">Clear Most Visited</a></footer>
+  <footer>
+    <a id="default" href="/default">Make Lucent Your Default Browser</a>
+    <a id="clear" href="/forget?all=1">Clear Most Visited</a>
+  </footer>
 </main>
 
 <div id="tilemenu"></div>
@@ -687,6 +700,27 @@ rows.appendChild(row('Most Visited', DATA.visited, 'site',
 function hideClear() { document.getElementById('clear').style.display = 'none'; }
 
 if (!DATA.visited.length) hideClear();
+
+// The way back to the offer in the chrome, which can be turned down for good. Only
+// drawn while there is something to accept: a browser that is already the default
+// saying so on every new tab is a line that never changes and never stops being read.
+var makeDefault = document.getElementById('default');
+
+if (DATA.isDefault) {
+  makeDefault.remove();
+} else {
+  makeDefault.addEventListener('click', function (e) {
+    e.preventDefault();
+
+    // The host registers Lucent and opens the page in Settings where the choice is
+    // actually made. Windows signs that choice itself, so this is as far as any
+    // browser can take it -- and saying what happens next beats a link that looks
+    // like it did nothing.
+    fetch('/default', { cache: 'no-store' }).then(function () {
+      makeDefault.textContent = 'Set Lucent For HTTP And HTTPS In Settings';
+    });
+  });
+}
 
 // Clearing the row goes the same way as removing one tile, for the same reason: a
 // page that reloads to empty a list it has already emptied is doing the work twice

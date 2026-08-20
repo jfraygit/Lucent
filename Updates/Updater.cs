@@ -143,6 +143,8 @@ public static class Updater
             File.Move(retired, current);            throw;
         }
 
+        SingleInstance.Release();
+
         Process.Start(new ProcessStartInfo(current) { UseShellExecute = true });
         Application.Current.Shutdown();
     }

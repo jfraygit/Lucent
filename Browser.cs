@@ -20,6 +20,8 @@ public sealed class Browser
 
     public bool UpdateChecked { get; set; }
 
+    public string? Pending { get; set; }
+
     public Browser()
     {
         Bookmarks.Load();

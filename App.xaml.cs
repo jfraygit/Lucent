@@ -15,6 +15,18 @@ public partial class App : Application
 
     protected override void OnStartup(StartupEventArgs e)
     {
+        string? requested = Url.FromLaunch(e.Args);
+
+        if (!SingleInstance.Claim() && SingleInstance.Forward(requested))
+        {
+            Shutdown();
+            return;
+        }
+
+        SingleInstance.Listen(url => Dispatcher.BeginInvoke(() => Open(url)));
+
+        DefaultBrowser.RefreshIfMoved();
+
         Directory.CreateDirectory(UserDataFolder);
 
         Updater.RemoveRetired();
@@ -23,8 +35,24 @@ public partial class App : Application
 
         base.OnStartup(e);
 
-        Browser = new Browser();
-        new MainWindow(Browser).Show();
+        Browser = new Browser { Pending = requested };
+
+        new Lucent.MainWindow(Browser).Show();
+    }
+
+    private void Open(string? url)
+    {
+        Lucent.MainWindow? window = Lucent.MainWindow.Recent
+                                    ?? Windows.OfType<Lucent.MainWindow>().FirstOrDefault();
+
+        if (window is null)
+        {
+            Browser.Pending = url;
+            new Lucent.MainWindow(Browser).Show();
+            return;
+        }
+
+        window.OpenFromLaunch(url);
     }
 
     protected override void OnExit(ExitEventArgs e)

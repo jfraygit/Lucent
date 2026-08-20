@@ -32,6 +32,7 @@
       <RowDefinition Height="Auto"/>
       <RowDefinition Height="Auto"/>
       <RowDefinition Height="Auto"/>
+      <RowDefinition Height="Auto"/>
       <RowDefinition Height="*"/>
     </Grid.RowDefinitions>
 
@@ -185,23 +186,72 @@
       <Button x:Name="ReloadButton" Grid.Column="2" Content="&#xE72C;"
               Style="{StaticResource IconButton}" Click="Reload_Click" ToolTip="Reload (F5)"/>
 
-      <Border Grid.Column="3" Background="{StaticResource FieldBg}" CornerRadius="7"
-              Height="30" Margin="6,0,6,0">
-        <Grid>
-          <Grid.ColumnDefinitions>
-            <ColumnDefinition Width="*"/>
-            <ColumnDefinition Width="Auto"/>
-          </Grid.ColumnDefinitions>
+      <Grid Grid.Column="3" Margin="6,0,6,0">
+        <Border CornerRadius="7" Height="30" Background="{StaticResource FieldBg}">
+          <Border.Effect>
+            <DropShadowEffect x:Name="AddressHalo" Color="#7C5CD6"
+                              BlurRadius="9" ShadowDepth="0" Opacity="0"/>
+          </Border.Effect>
+        </Border>
 
-          <TextBox x:Name="AddressBar" Style="{StaticResource AddressBox}"
-                   KeyDown="AddressBar_KeyDown" GotKeyboardFocus="AddressBar_GotFocus"
-                   PreviewKeyDown="AddressBar_PreviewKeyDown"
-                   TextChanged="AddressBar_TextChanged"/>
+        <Border x:Name="AddressShell" CornerRadius="7" Height="30" BorderThickness="1">
+          <Border.Background>
+            <SolidColorBrush x:Name="AddressFill" Color="#26262D"/>
+          </Border.Background>
+          <Border.BorderBrush>
+            <SolidColorBrush x:Name="AddressEdge" Color="Transparent"/>
+          </Border.BorderBrush>
 
-          <Button x:Name="StarButton" Grid.Column="1" Style="{StaticResource StarButton}"
-                  Margin="0,0,3,0" Click="Star_Click"/>
-        </Grid>
-      </Border>
+          <Grid>
+            <Grid.ColumnDefinitions>
+              <ColumnDefinition Width="*"/>
+              <ColumnDefinition Width="Auto"/>
+            </Grid.ColumnDefinitions>
+
+            <TextBox x:Name="AddressBar" Style="{StaticResource AddressBox}"
+                     KeyDown="AddressBar_KeyDown" GotKeyboardFocus="AddressBar_GotFocus"
+                     PreviewKeyDown="AddressBar_PreviewKeyDown"
+                     TextChanged="AddressBar_TextChanged"/>
+
+            <Button x:Name="StarButton" Grid.Column="1" Style="{StaticResource StarButton}"
+                    Focusable="False" Margin="0,0,3,0" Click="Star_Click"/>
+          </Grid>
+        </Border>
+
+        <Grid.Triggers>
+          <EventTrigger RoutedEvent="Keyboard.GotKeyboardFocus">
+            <BeginStoryboard>
+              <Storyboard>
+                <ColorAnimation Storyboard.TargetName="AddressEdge"
+                                Storyboard.TargetProperty="Color"
+                                To="#7C5CD6" Duration="0:0:0.15"/>
+                <ColorAnimation Storyboard.TargetName="AddressFill"
+                                Storyboard.TargetProperty="Color"
+                                To="#2A2A32" Duration="0:0:0.15"/>
+                <DoubleAnimation Storyboard.TargetName="AddressHalo"
+                                 Storyboard.TargetProperty="Opacity"
+                                 To="0.45" Duration="0:0:0.15"/>
+              </Storyboard>
+            </BeginStoryboard>
+          </EventTrigger>
+
+          <EventTrigger RoutedEvent="Keyboard.LostKeyboardFocus">
+            <BeginStoryboard>
+              <Storyboard>
+                <ColorAnimation Storyboard.TargetName="AddressEdge"
+                                Storyboard.TargetProperty="Color"
+                                To="Transparent" Duration="0:0:0.15"/>
+                <ColorAnimation Storyboard.TargetName="AddressFill"
+                                Storyboard.TargetProperty="Color"
+                                To="#26262D" Duration="0:0:0.15"/>
+                <DoubleAnimation Storyboard.TargetName="AddressHalo"
+                                 Storyboard.TargetProperty="Opacity"
+                                 To="0" Duration="0:0:0.15"/>
+              </Storyboard>
+            </BeginStoryboard>
+          </EventTrigger>
+        </Grid.Triggers>
+      </Grid>
 
       <Border Grid.Column="4" Background="{StaticResource FieldBg}" CornerRadius="7"
               Padding="10,0,10,0" Height="30" ToolTip="Requests blocked on this tab">
@@ -275,6 +325,26 @@
       </Grid>
     </Border>
 
-    <Grid x:Name="ContentHost" Grid.Row="4" Margin="4,0,4,4"/>
+    <Border x:Name="DefaultBar" Grid.Row="4" Visibility="Collapsed"
+            Background="{StaticResource FieldBg}" CornerRadius="7"
+            Margin="8,0,8,7" Padding="12,0,4,0" Height="34">
+      <Grid>
+        <Grid.ColumnDefinitions>
+          <ColumnDefinition Width="*"/>
+          <ColumnDefinition Width="Auto"/>
+          <ColumnDefinition Width="Auto"/>
+        </Grid.ColumnDefinitions>
+
+        <TextBlock x:Name="DefaultText" Foreground="{StaticResource Fg}" FontSize="12"
+                   VerticalAlignment="Center" TextTrimming="CharacterEllipsis"/>
+
+        <Button x:Name="DefaultAction" Grid.Column="1" Content="Set Default"
+                Style="{StaticResource AccentTextButton}" Click="DefaultSet_Click"/>
+        <Button x:Name="DefaultDismiss" Grid.Column="2" Content="Not Now"
+                Style="{StaticResource TextButton}" Click="DefaultLater_Click"/>
+      </Grid>
+    </Border>
+
+    <Grid x:Name="ContentHost" Grid.Row="5" Margin="4,0,4,4"/>
   </Grid>
 </Window>

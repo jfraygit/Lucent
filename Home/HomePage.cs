@@ -76,6 +76,15 @@ public sealed class HomePage
             return;
         }
 
+        if (requested.AbsolutePath.Equals("/default", StringComparison.OrdinalIgnoreCase))
+        {
+            if (DefaultBrowser.Register()) DefaultBrowser.OpenSettings();
+
+            e.Response = core.Environment.CreateWebResourceResponse(
+                null, 204, "No Content", "Cache-Control: no-store");
+            return;
+        }
+
         if (requested.AbsolutePath.Equals("/history.json", StringComparison.OrdinalIgnoreCase))
         {
             Respond(core, e, History());
@@ -204,7 +213,12 @@ public sealed class HomePage
             })
             .ToList();
 
-        string data = JsonSerializer.Serialize(new { bookmarks = bookmarkTiles, visited = visitedTiles });
+        string data = JsonSerializer.Serialize(new
+        {
+            bookmarks = bookmarkTiles,
+            visited = visitedTiles,
+            isDefault = DefaultBrowser.IsDefault
+        });
 
         return Template()
             .Replace("__LUCENT_DATA__", data)

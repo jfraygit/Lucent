@@ -57,6 +57,9 @@ public sealed class BrowserTab : INotifyPropertyChanged
     }
 
     public string Source => View.CoreWebView2?.Source ?? string.Empty;
+
+    public static bool IsBlank(string? url) =>
+        string.IsNullOrEmpty(url) || url.StartsWith("about:blank", StringComparison.OrdinalIgnoreCase);
     public bool CanGoBack => View.CoreWebView2?.CanGoBack ?? false;
     public bool CanGoForward => View.CoreWebView2?.CanGoForward ?? false;
 
@@ -65,6 +68,8 @@ public sealed class BrowserTab : INotifyPropertyChanged
     public event Action<BrowserTab, bool>? FullScreenChanged;
 
     public event Action<BrowserTab, CoreWebView2ContextMenuRequestedEventArgs>? ContextMenuRequested;
+
+    public event Action<BrowserTab>? DownloadedIntoBlankTab;
 
     public HomePage? Home { get; set; }
 
@@ -106,6 +111,14 @@ public sealed class BrowserTab : INotifyPropertyChanged
         core.SourceChanged += (_, _) => Changed?.Invoke(this);
         core.HistoryChanged += (_, _) => Changed?.Invoke(this);
         core.NewWindowRequested += (_, e) => NewWindowRequested?.Invoke(this, e);
+
+        core.DownloadStarting += (_, _) =>
+        {
+            if (core.CanGoBack || !IsBlank(core.Source)) return;
+
+            DownloadedIntoBlankTab?.Invoke(this);
+        };
+
         core.ContextMenuRequested += (_, e) => ContextMenuRequested?.Invoke(this, e);
         core.ContainsFullScreenElementChanged += (_, _) =>
             FullScreenChanged?.Invoke(this, core.ContainsFullScreenElement);

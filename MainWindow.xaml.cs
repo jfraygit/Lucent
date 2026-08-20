@@ -8,6 +8,7 @@ using System.Windows.Input;
 using System.Windows.Interop;
 using System.Windows.Media;
 using System.Windows.Shell;
+using System.Windows.Threading;
 using Lucent.Bookmarks;
 using Lucent.Home;
 using Lucent.Ui;
@@ -30,6 +31,8 @@ public partial class MainWindow : Window
 
     private readonly bool _isFirst;
 
+    public static MainWindow? Recent { get; private set; }
+
     private WindowState _lastVisibleState = WindowState.Normal;
 
     private IntPtr _lastMonitor;
@@ -38,6 +41,10 @@ public partial class MainWindow : Window
     private BrowserTab? _active;
     private UpdateInfo? _update;
     private bool _updateOffered;
+    private bool _defaultOffered;
+
+    private bool _defaultSent;
+
     private bool _isFullScreen;
     private WindowState _preFullScreenState = WindowState.Normal;
 
@@ -83,6 +90,12 @@ public partial class MainWindow : Window
             RememberWindowState();
         };
         LocationChanged += (_, _) => RememberMonitor();
+        Activated += (_, _) =>
+        {
+            Recent = this;
+
+            RefreshDefaultBar();
+        };
         Closing += (_, _) =>
         {
             SaveSession(closing: this);
@@ -97,6 +110,10 @@ public partial class MainWindow : Window
         Closed += (_, _) =>
         {
             _bookmarks.Items.CollectionChanged -= OnBookmarksChanged;
+
+            if (ReferenceEquals(Recent, this))
+                Recent = Application.Current.Windows.OfType<MainWindow>()
+                                    .FirstOrDefault(w => !ReferenceEquals(w, this));
 
             foreach (BrowserTab tab in _tabs) tab.Dispose();
         };
@@ -134,11 +151,39 @@ public partial class MainWindow : Window
             await RestoreSessionAsync();
         }
 
+        if (_browser.Pending is { } pending)
+        {
+            _browser.Pending = null;
+            await OpenTabAsync(pending, activate: true);
+        }
+
+        if (_tabs.Count == 0)
+            await OpenTabAsync(Url.Home, activate: true);
+
         if (!_browser.UpdateChecked)
         {
             _browser.UpdateChecked = true;
             _ = CheckForUpdateAsync();
         }
+
+        OfferToBeDefault();
+    }
+
+    public async void OpenFromLaunch(string? url)
+    {
+        if (WindowState == WindowState.Minimized) WindowState = _lastVisibleState;
+
+        Activate();
+
+        if (url is null) return;
+
+        if (_environment is null)
+        {
+            _browser.Pending = url;
+            return;
+        }
+
+        await OpenTabAsync(url, activate: true);
     }
 
     private void ShowStartupFailure(Exception ex)
@@ -211,6 +256,55 @@ public partial class MainWindow : Window
     }
 
 
+    private void OfferToBeDefault()
+    {
+        if (!_isFirst) return;
+
+        if (DefaultBrowser.IsDefault || DefaultBrowser.Dismissed) return;
+
+        DefaultText.Text = "Make Lucent Your Default Browser";
+        _defaultOffered = true;
+        ShowDefaultBar();
+    }
+
+    private void ShowDefaultBar() =>
+        DefaultBar.Visibility = _defaultOffered && !_isFullScreen ? Visibility.Visible : Visibility.Collapsed;
+
+    private void RefreshDefaultBar()
+    {
+        if (!_defaultOffered || !DefaultBrowser.IsDefault) return;
+
+        _defaultOffered = false;
+        _defaultSent = false;
+        ShowDefaultBar();
+    }
+
+    private void DefaultSet_Click(object sender, RoutedEventArgs e)
+    {
+        if (!DefaultBrowser.Register())
+        {
+            DefaultText.Text = "Lucent Could Not Register Itself With Windows.";
+            DefaultAction.Visibility = Visibility.Collapsed;
+            return;
+        }
+
+        DefaultBrowser.OpenSettings();
+
+        _defaultSent = true;
+        DefaultText.Text = "Set Lucent For HTTP And HTTPS In Settings.";
+        DefaultAction.Visibility = Visibility.Collapsed;
+        DefaultDismiss.Content = "Hide";
+    }
+
+    private void DefaultLater_Click(object sender, RoutedEventArgs e)
+    {
+        if (!_defaultSent) DefaultBrowser.Dismiss();
+
+        _defaultOffered = false;
+        ShowDefaultBar();
+    }
+
+
     private async Task RestoreSessionAsync()
     {
         IReadOnlyList<SessionWindow> windows = _session.Windows;
@@ -275,8 +369,18 @@ public partial class MainWindow : Window
         if (activate) SelectTab(tab);
         else tab.IsActive = false;
 
+        if (activate && HomePage.IsHome(url)) FocusAddress();
+
         return tab;
     }
+
+    private void FocusAddress() => Dispatcher.BeginInvoke(
+        DispatcherPriority.Input,
+        new Action(() =>
+        {
+            AddressBar.Focus();
+            AddressBar.SelectAll();
+        }));
 
     private void SelectTab(BrowserTab tab)
     {
@@ -335,11 +439,13 @@ public partial class MainWindow : Window
         BackButton.IsEnabled = _active.CanGoBack;
         ForwardButton.IsEnabled = _active.CanGoForward;
 
+        bool nothingToShow = HomePage.IsHome(_active.Source) || BrowserTab.IsBlank(_active.Source);
+
         if (!AddressBar.IsKeyboardFocusWithin)
-            AddressBar.Text = HomePage.IsHome(_active.Source) ? string.Empty : _active.Source;
+            AddressBar.Text = nothingToShow ? string.Empty : _active.Source;
 
         BlockCount.Text = $"{_active.Blocker.BlockedCount} blocked";
-        Title = string.IsNullOrWhiteSpace(_active.Title) || HomePage.IsHome(_active.Source)
+        Title = string.IsNullOrWhiteSpace(_active.Title) || nothingToShow
             ? "Lucent"
             : $"{_active.Title} - Lucent";
 
@@ -455,6 +561,7 @@ public partial class MainWindow : Window
         TabStripRow.Visibility = on ? Visibility.Collapsed : Visibility.Visible;
         NavRow.Visibility = on ? Visibility.Collapsed : Visibility.Visible;
         ShowUpdateBar();
+        ShowDefaultBar();
         ShowBookmarkBar();
 
         SetCaptionStyle(!on);
@@ -847,6 +954,7 @@ public partial class MainWindow : Window
         tab.FullScreenChanged += OnFullScreenChanged;
         tab.NewWindowRequested += OnNewWindowRequested;
         tab.ContextMenuRequested += OnContextMenuRequested;
+        tab.DownloadedIntoBlankTab += OnDownloadedIntoBlankTab;
         tab.Blocker.BlockedCountChanged += OnBlockedCountChanged;
     }
 
@@ -856,8 +964,16 @@ public partial class MainWindow : Window
         tab.FullScreenChanged -= OnFullScreenChanged;
         tab.NewWindowRequested -= OnNewWindowRequested;
         tab.ContextMenuRequested -= OnContextMenuRequested;
+        tab.DownloadedIntoBlankTab -= OnDownloadedIntoBlankTab;
         tab.Blocker.BlockedCountChanged -= OnBlockedCountChanged;
     }
+
+    private void OnDownloadedIntoBlankTab(BrowserTab tab) => Dispatcher.BeginInvoke(() =>
+    {
+        if (!_tabs.Contains(tab) || !BrowserTab.IsBlank(tab.Source)) return;
+
+        tab.View.CoreWebView2?.Navigate(Url.Home);
+    });
 
     private void OnBlockedCountChanged(int count) => Dispatcher.BeginInvoke(UpdateChrome);
 
