@@ -63,7 +63,7 @@
             </ItemsControl.ItemContainerStyle>
             <ItemsControl.ItemTemplate>
               <DataTemplate>
-                <Grid Background="Transparent" Height="40" Margin="0,0,3,0" Cursor="Hand"
+                <Grid x:Name="TabHit" Background="Transparent" Height="40" Margin="0,0,3,0" Cursor="Hand"
                       MouseLeftButtonDown="Tab_MouseDown"
                       MouseMove="Tab_MouseMove"
                       MouseLeftButtonUp="Tab_MouseUp"
@@ -72,13 +72,22 @@
                         CornerRadius="7,7,0,0" Padding="11,0,5,0"
                         VerticalAlignment="Bottom"
                         Height="33" MinWidth="130" MaxWidth="220"
+                        BorderThickness="1,1,1,0"
                         RenderTransformOrigin="0.5,0.5">
+                  <Border.BorderBrush>
+                    <SolidColorBrush x:Name="TabEdge" Color="Transparent"/>
+                  </Border.BorderBrush>
                   <Border.RenderTransform>
                     <TransformGroup>
                       <ScaleTransform x:Name="TabScale" ScaleX="1" ScaleY="1"/>
                       <TranslateTransform X="{Binding DragOffset}"/>
                     </TransformGroup>
                   </Border.RenderTransform>
+
+                  <Border.Effect>
+                    <DropShadowEffect x:Name="TabGlow" Color="#7C5CD6"
+                                      BlurRadius="12" ShadowDepth="0" Opacity="0"/>
+                  </Border.Effect>
                   <Grid>
                     <Grid.ColumnDefinitions>
                       <ColumnDefinition Width="Auto"/>
@@ -96,6 +105,34 @@
                             Click="TabClose_Click" ToolTip="Close Tab"/>
                   </Grid>
                 </Border>
+
+                <Grid.Triggers>
+                  <EventTrigger RoutedEvent="UIElement.MouseEnter">
+                    <BeginStoryboard>
+                      <Storyboard>
+                        <ColorAnimation Storyboard.TargetName="TabEdge"
+                                        Storyboard.TargetProperty="Color"
+                                        To="#7C5CD6" Duration="0:0:0.16"/>
+                        <DoubleAnimation Storyboard.TargetName="TabGlow"
+                                         Storyboard.TargetProperty="Opacity"
+                                         To="0.75" Duration="0:0:0.16"/>
+                      </Storyboard>
+                    </BeginStoryboard>
+                  </EventTrigger>
+
+                  <EventTrigger RoutedEvent="UIElement.MouseLeave">
+                    <BeginStoryboard>
+                      <Storyboard>
+                        <ColorAnimation Storyboard.TargetName="TabEdge"
+                                        Storyboard.TargetProperty="Color"
+                                        To="Transparent" Duration="0:0:0.24"/>
+                        <DoubleAnimation Storyboard.TargetName="TabGlow"
+                                         Storyboard.TargetProperty="Opacity"
+                                         To="0" Duration="0:0:0.24"/>
+                      </Storyboard>
+                    </BeginStoryboard>
+                  </EventTrigger>
+                </Grid.Triggers>
                 </Grid>
                 <DataTemplate.Triggers>
                   <DataTrigger Binding="{Binding IsActive}" Value="True">

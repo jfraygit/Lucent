@@ -157,7 +157,7 @@ public partial class MainWindow : Window
             await OpenTabAsync(pending, activate: true);
         }
 
-        if (_tabs.Count == 0)
+        if (_isFirst && _tabs.Count == 0)
             await OpenTabAsync(Url.Home, activate: true);
 
         if (!_browser.UpdateChecked)
