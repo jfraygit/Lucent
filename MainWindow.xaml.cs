@@ -80,6 +80,10 @@ public partial class MainWindow : Window
         _bookmarks.Items.CollectionChanged += OnBookmarksChanged;
 
         TabStrip.ItemsSource = _tabs;
+
+        _tabs.CollectionChanged += (_, _) => LayoutTabs();
+        SizeChanged += (_, _) => LayoutTabs();
+
         Loaded += OnLoaded;
         StateChanged += (_, _) =>
         {
@@ -132,6 +136,8 @@ public partial class MainWindow : Window
         UpdateMaximizedInset();
 
         UpdateResizeBorder();
+
+        LayoutTabs();
 
         VersionLabel.Text = $"v{Release.CurrentDisplay}";
 
@@ -381,6 +387,28 @@ public partial class MainWindow : Window
             AddressBar.Focus();
             AddressBar.SelectAll();
         }));
+
+
+    private const double TabGap = 3;
+
+    private const double NewTabRoom = 32;
+
+    private const double TabWidest = 220;
+
+    private const double TabNarrowest = 74;
+
+    private void LayoutTabs()
+    {
+        if (_tabs.Count == 0) return;
+
+        double available = TabScroller.ActualWidth - NewTabRoom;
+
+        if (available <= 0) return;
+
+        double each = Math.Clamp(available / _tabs.Count - TabGap, TabNarrowest, TabWidest);
+
+        foreach (BrowserTab tab in _tabs) tab.Width = each;
+    }
 
     private void SelectTab(BrowserTab tab)
     {

@@ -18,6 +18,16 @@ public static class BlockList
         "countess.twitch.tv",
         "ads.twitch.tv",
 
+        "nitropay.com",
+        "ezoic.net",
+        "ezojs.com",
+        "media.net",
+        "adthrive.com",
+        "mediavine.com",
+        "playwire.com",
+        "venatusmedia.com",
+        "snigelweb.com",
+
         "adnxs.com",
         "adsrvr.org",
         "criteo.com",
@@ -30,6 +40,20 @@ public static class BlockList
         "adsafeprotected.com",
         "taboola.com",
         "outbrain.com",
+        "casalemedia.com",
+        "indexww.com",
+        "smartadserver.com",
+        "adform.net",
+        "sharethrough.com",
+        "triplelift.com",
+        "yieldmo.com",
+        "teads.tv",
+        "gumgum.com",
+        "33across.com",
+        "onetag-sys.com",
+        "bidswitch.net",
+        "sovrn.com",
+        "lijit.com",
 
         "scorecardresearch.com",
         "quantserve.com",
@@ -39,6 +63,12 @@ public static class BlockList
         "hotjar.com",
         "fullstory.com",
         "segment.io",
+
+        "cloudflareinsights.com",
+
+        "rlcdn.com",
+        "id5-sync.com",
+        "crwdcntrl.net",
     };
 
     public static readonly string[] UrlPatterns =

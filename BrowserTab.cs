@@ -20,6 +20,7 @@ public sealed class BrowserTab : INotifyPropertyChanged
     private ImageSource? _favicon;
     private bool _isDragging;
     private double _dragOffset;
+    private double _width = 220;
 
     public bool IsDragging
     {
@@ -31,6 +32,12 @@ public sealed class BrowserTab : INotifyPropertyChanged
     {
         get => _dragOffset;
         set => Set(ref _dragOffset, value);
+    }
+
+    public double Width
+    {
+        get => _width;
+        set => Set(ref _width, value);
     }
 
     public string Title
@@ -50,9 +57,10 @@ public sealed class BrowserTab : INotifyPropertyChanged
         get => _isActive;
         set
         {
-            if (Set(ref _isActive, value))
-                View.Visibility = value ? System.Windows.Visibility.Visible
-                                        : System.Windows.Visibility.Collapsed;
+            Set(ref _isActive, value);
+
+            View.Visibility = value ? System.Windows.Visibility.Visible
+                                    : System.Windows.Visibility.Collapsed;
         }
     }
 
@@ -77,8 +85,13 @@ public sealed class BrowserTab : INotifyPropertyChanged
 
     public HistoryStore? History { get; set; }
 
+    private static readonly System.Drawing.Color Unpainted =
+        System.Drawing.Color.FromArgb(0xFF, 0x14, 0x14, 0x17);
+
     public async Task InitializeAsync(CoreWebView2Environment environment, string? navigateTo)
     {
+        View.DefaultBackgroundColor = Unpainted;
+
         await View.EnsureCoreWebView2Async(environment);
 
         CoreWebView2 core = View.CoreWebView2;

@@ -42,7 +42,7 @@
         <ColumnDefinition Width="Auto"/>
       </Grid.ColumnDefinitions>
 
-      <ScrollViewer Grid.Column="0" Margin="8,0,0,0"
+      <ScrollViewer x:Name="TabScroller" Grid.Column="0" Margin="8,0,0,0"
                     HorizontalScrollBarVisibility="Hidden"
                     VerticalScrollBarVisibility="Disabled">
         <StackPanel Orientation="Horizontal">
@@ -71,7 +71,7 @@
                 <Border x:Name="TabRoot" Background="{StaticResource TabBg}"
                         CornerRadius="7,7,0,0" Padding="11,0,5,0"
                         VerticalAlignment="Bottom"
-                        Height="33" MinWidth="130" MaxWidth="220"
+                        Height="33" Width="{Binding Width}"
                         BorderThickness="1,1,1,0"
                         RenderTransformOrigin="0.5,0.5">
                   <Border.BorderBrush>
